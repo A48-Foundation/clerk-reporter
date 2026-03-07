@@ -1,0 +1,27 @@
+{
+  "name": "clerk-reporter",
+  "version": "1.0.0",
+  "description": "Automated debate tournament pairings report bot — monitors Tabroom emails and sends scouting reports to Discord",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "jest --verbose"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "cheerio": "^1.2.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "fuse.js": "^7.1.0",
+    "imap": "^0.8.19",
+    "mailparser": "^3.9.3",
+    "node-fetch": "^2.7.0",
+    "openai": "^6.27.0"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
+  }
+}
