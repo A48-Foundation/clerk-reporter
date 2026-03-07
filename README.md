@@ -1,119 +1,290 @@
-# Clerk Kent — Discord Judge Lookup & Pairings Report Bot
+# Clerk Reporter
 
-A Discord bot that searches a Notion database of debate judges, tracks tournament pairings from Tabroom, and automatically generates scouting reports with opponent argument analysis and judge paradigm summaries.
+Automated debate tournament scouting reports, delivered straight to Discord.
 
-## Features
+Clerk Reporter monitors a Gmail inbox for [Tabroom](https://www.tabroom.com) pairing notification emails. When a new round is paired, it automatically identifies your team, researches the opponent on [OpenCaselist](https://opencaselist.com/hspolicy25), fetches the judge's paradigm from Tabroom, summarizes both with an LLM, and posts a rich scouting report to the team's Discord channel.
 
-### Judge Lookup
-Mention the bot with a judge name to get their info from Notion (win rate, email, prefs, tags, notes).
+---
 
-### Automated Pairings Reports (NEW)
-When activated, the bot monitors a Gmail inbox for Tabroom pairing notification emails and automatically sends scouting reports to each team's Discord channel:
-- **Opponent scouting** — looks up the opponent on [OpenCaselist](https://opencaselist.com/hspolicy25), summarizes their arguments (1AC list for aff, 2NR strategies for neg) with frequency analysis
-- **Judge paradigm** — fetches and LLM-summarizes the judge's paradigm from Tabroom, plus any notes from the Notion judge database
-- **Auto channel mapping** — maps team codes to Discord channels (e.g. `Interlake CG` → `#cg-tournaments`)
+## For Users
 
-## Setup
+### What the Bot Does
 
-### 1. Discord Bot Setup
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
-2. Create a new application named **Clerk Kent**
-3. Go to **Bot** → click **Reset Token** → copy the token into `.env`
-4. Under **Privileged Gateway Intents**, enable **Message Content Intent**
-5. Go to **OAuth2 → URL Generator**:
-   - Scopes: `bot`
-   - Bot Permissions: `Send Messages`, `Read Message History`, `Add Reactions`
-6. Copy the generated URL and open it in your browser to invite the bot to your server
+When you activate the pairings pipeline during a tournament, the bot will automatically send a **scouting report** to each team's Discord channel every time Tabroom publishes a new pairing. Each report includes:
 
-### 2. Notion Integration Setup
-1. Go to [Notion Integrations](https://www.notion.so/my-integrations) and create an integration
-2. Copy the integration token into `.env` as `NOTION_TOKEN`
-3. Share your **Judges** database with the integration
+- **Pairing summary** — round name, your side (Aff/Neg/Flip), opponent, room, and start time
+- **Opponent scouting** — arguments the opponent has read on the relevant side, pulled from OpenCaselist with frequency analysis (e.g. "Politics DA — 4x", "Hegemony 1AC — 3x")
+- **Judge info** — paradigm summary, Tabroom profile link, and any notes from your Notion judge database
 
-### 3. Gmail IMAP Setup (for pairings pipeline)
-1. Enable 2-Step Verification on the Gmail account (`clerk.kent.debate@gmail.com`)
-2. Generate an App Password at [myaccount.google.com](https://myaccount.google.com/apppasswords)
-3. Copy the 16-character app password into `.env` as `IMAP_PASSWORD`
+### Commands
 
-### 4. Environment Variables
-Create a `.env` file with:
+All commands start by @-mentioning the bot.
+
+#### Start Automated Reports
+
 ```
-# Notion
-NOTION_TOKEN=your_notion_integration_token
-JUDGE_DATABASE_ID=your_judge_database_id
-FEEDBACK_DATABASE_ID=your_feedback_database_id
+@Clerk Kent initiate pairings reports <tabroom_url>
+```
 
-# Discord
-DISCORD_TOKEN=your_discord_bot_token
+Provide any Tabroom pairings page URL (one that contains a `tourn_id` and optionally a `round_id`). The bot will:
 
-# Tabroom credentials (for OpenCaselist API + paradigm scraping)
-TABROOM_EMAIL=your_tabroom_email
+1. Scrape the current pairings to find all your teams (Interlake, Cuttlefish, etc.)
+2. Propose a channel mapping (e.g. **Interlake CG** → **#cg-tournaments**)
+3. Wait for you to confirm (react ✅) or type overrides (e.g. `CG=#my-channel`)
+4. Start monitoring the email inbox for new pairing notifications
+5. Automatically send scouting reports as rounds are paired
+
+**Example:**
+
+```
+@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/postings/round.mhtml?tourn_id=36452&round_id=1503711
+```
+
+#### Stop Automated Reports
+
+```
+@Clerk Kent stop pairings
+```
+
+Deactivates the email monitor and clears the session.
+
+#### Manual Team Tracking
+
+```
+@Clerk Kent track <tabroom_url> <team_code>
+```
+
+Registers a team for round-by-round updates in the current channel. The bot polls Tabroom directly (no email needed).
+
+```
+@Clerk Kent report <code>
+```
+
+Fetches the latest round's pairing and judge info for a tracked team. Use just the team suffix (e.g. `SW`, `CG`).
+
+```
+@Clerk Kent untrack <team_code>
+@Clerk Kent tournaments
+```
+
+Remove a tracked team, or list all active tournament trackings.
+
+#### Judge Lookup
+
+```
+@Clerk Kent <judge name>
+```
+
+Searches the Notion judge database and returns info (win rate, email, prefs, tags, and any coach notes).
+
+### Channel Naming Convention
+
+The bot automatically maps team codes to Discord channels using this pattern:
+
+| Team Code | Expected Channel |
+|-----------|-----------------|
+| Interlake CG | `#cg-tournaments` |
+| Cuttlefish independent WS | `#ws-tournaments` |
+| Interlake SW | `#sw-tournaments` |
+
+The last word of the team code (the letter suffix) is lowercased and appended with `-tournaments`. Create your channels following this pattern, or use overrides when prompted.
+
+### Email Formats Supported
+
+The bot detects and parses two Tabroom email formats:
+
+- **Live Update** — one team per email, sent to `[TAB] Team Round N Event` subjects with a structured body (Competitors, Judging sections)
+- **Round Assignments** — one school per email with `[TAB] School Round Assignments` subjects, may contain multiple team entries
+
+Non-pairing emails (check-in notices, registration reminders, payment info) are automatically filtered out.
+
+---
+
+## For Developers
+
+### Architecture
+
+```
+index.js                  Entry point — env validation, bot startup
+  └─ bot.js               Discord command handler + pairings pipeline orchestrator
+       ├─ email-monitor.js     Gmail IMAP poller → emits 'pairing' events
+       ├─ email-parser.js      Parses email subject/body → structured pairing data
+       ├─ caselist-service.js   OpenCaselist API client (auth, school/team lookup, rounds)
+       ├─ paradigm-service.js   Tabroom paradigm scraper (cheerio-based)
+       ├─ llm-service.js        OpenAI summarization + frequency analysis fallback
+       ├─ channel-mapper.js     Team code → Discord channel auto-mapping
+       ├─ report-builder.js     Builds Discord embed arrays
+       ├─ tournament-store.js   JSON file persistence for sessions + tracking
+       ├─ notion-service.js     Notion API — judge search with Fuse.js fuzzy matching
+       ├─ tabroom-scraper.js    Scrapes Tabroom pairings HTML pages
+       └─ pairings-poller.js    Legacy polling-based round checker
+```
+
+### Data Flow
+
+```
+Tabroom emails → Gmail IMAP
+                     │
+            EmailMonitor polls every 30s
+                     │
+            isPairingEmail() filter
+                     │
+            EmailParser.parse()
+                     │
+         ┌───────────┴───────────┐
+     Format A               Format B
+   (1 team/email)       (N teams/email)
+         │                       │
+         └───────────┬───────────┘
+                     │
+          handlePairingEvent()
+                     │
+     ┌───────────────┼───────────────┐
+     │               │               │
+ CaselistService  ParadigmService  NotionService
+ (opponent args)  (judge paradigm) (judge notes)
+     │               │               │
+     └───────┬───────┘               │
+             │                       │
+        LlmService                   │
+     (summarization)                 │
+             │                       │
+             └───────────┬───────────┘
+                         │
+                  ReportBuilder
+                  (Discord embeds)
+                         │
+                  channel.send()
+```
+
+### Setup
+
+#### Prerequisites
+
+- **Node.js** ≥ 18
+- A **Discord bot** with `Send Messages`, `Read Message History`, and `Add Reactions` permissions, plus **Message Content Intent** enabled
+- A **Notion integration** connected to your judge database
+- A **Gmail account** with IMAP enabled and a 16-character App Password (requires 2FA)
+- A **Tabroom account** (used for OpenCaselist API auth and paradigm scraping)
+- *(Optional)* An **OpenAI API key** for LLM-powered summaries — without it, the bot falls back to keyword frequency analysis
+
+#### 1. Clone and Install
+
+```bash
+git clone https://github.com/A48-Foundation/clerk-reporter.git
+cd clerk-reporter
+npm install
+```
+
+#### 2. Configure Environment
+
+Create a `.env` file in the project root:
+
+```env
+# ── Required ──────────────────────────────────────────
+NOTION_TOKEN=secret_abc123...
+JUDGE_DATABASE_ID=abc123-def456-...
+DISCORD_TOKEN=MTIz...
+
+# ── Tabroom (for caselist + paradigm lookups) ─────────
+TABROOM_EMAIL=your@email.com
 TABROOM_PASSWORD=your_tabroom_password
 
-# Gmail IMAP for pairing email monitoring
+# ── Gmail IMAP (for pairing email monitoring) ─────────
 IMAP_EMAIL=clerk.kent.debate@gmail.com
-IMAP_PASSWORD=your_gmail_app_password
+IMAP_PASSWORD=abcdefghijklmnop
 
-# LLM API key for argument/paradigm summarization
-OPENAI_API_KEY=your_openai_api_key
-
-# Comma-separated school names to auto-detect in pairings
+# ── Optional ──────────────────────────────────────────
+OPENAI_API_KEY=sk-...
 SCHOOL_NAMES=Interlake,Cuttlefish,Cuttlefish Independent
+FEEDBACK_DATABASE_ID=abc123-...
 ```
 
-### 5. Install & Run
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NOTION_TOKEN` | ✅ | Notion integration token |
+| `JUDGE_DATABASE_ID` | ✅ | ID of the Notion judge database |
+| `DISCORD_TOKEN` | ✅ | Discord bot token |
+| `TABROOM_EMAIL` | For pairings | Tabroom login email (also used for OpenCaselist auth) |
+| `TABROOM_PASSWORD` | For pairings | Tabroom login password |
+| `IMAP_EMAIL` | For pairings | Gmail address to monitor for Tabroom emails |
+| `IMAP_PASSWORD` | For pairings | Gmail App Password (16 chars, requires 2FA) |
+| `OPENAI_API_KEY` | Optional | Enables LLM summarization; without it, uses keyword frequency analysis |
+| `SCHOOL_NAMES` | Optional | Comma-separated school names to detect in pairings (default: `Interlake,Cuttlefish`) |
+| `FEEDBACK_DATABASE_ID` | Optional | Notion feedback database (reserved for future features) |
+
+#### 3. Gmail App Password
+
+1. Enable **2-Step Verification** on the Gmail account
+2. Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+3. Generate a new App Password for "Mail"
+4. Copy the 16-character password into `IMAP_PASSWORD`
+
+#### 4. Notion Database
+
+The judge database must have these properties:
+- **Name** (title) — judge name
+- **Win%** (rollup → number) — win rate as decimal
+- **Email** (email)
+- **Tabroom** (URL) — link to Tabroom profile
+- **Tags** (multi-select)
+- **Prefs** (number)
+- Comments on pages are used as coach notes
+
+> ⚠️ The bot only **reads** from Notion — it will never create, update, or delete pages.
+
+#### 5. Discord Channel Setup
+
+Create channels following the `{suffix}-tournaments` pattern for each team:
+- `#cg-tournaments` for team code ending in CG
+- `#sw-tournaments` for team code ending in SW
+- etc.
+
+#### 6. Run
+
 ```bash
-npm install
 npm start
 ```
 
-### 6. Run Tests
+### Running Tests
+
 ```bash
 npm test
 ```
 
-## Usage
+The test suite includes **134 tests** across 6 files:
 
-### Judge Lookup
-```
-@Clerk Kent John Smith
-@Clerk Kent Smith
-```
+| File | Tests | What it covers |
+|------|-------|----------------|
+| `email-parser.test.js` | 52 | Subject/body parsing for both formats, pairing detection, edge cases |
+| `channel-mapper.test.js` | 14 | Team suffix extraction, channel lookup, auto-mapping |
+| `report-builder.test.js` | 18 | Embed construction, field formatting, truncation, embed cap |
+| `llm-service.test.js` | — | Frequency analysis, paradigm truncation, LLM fallback |
+| `caselist-service.test.js` | — | Team code parsing, school lookup, wiki URL construction |
+| `tournament-store.test.js` | 33 | Load/save, team tracking, session management, email UID tracking |
 
-### Pairings Pipeline
-```
-@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/postings/round.mhtml?tourn_id=36452&round_id=1503711
-```
-The bot will:
-1. Find all Interlake/Cuttlefish teams in the pairings
-2. Auto-map them to Discord channels (e.g. CG → #cg-tournaments)
-3. Ask for confirmation/overrides
-4. Start monitoring the email inbox for pairing notifications
-5. Automatically send scouting reports when new pairings arrive
+Test fixtures live in `tests/fixtures/emails.js` — real email samples with pre-calculated expected outputs.
 
-To stop: `@Clerk Kent stop pairings`
+### Key Implementation Details
 
-### Manual Commands
-```
-@Clerk Kent track <tabroom_url> <team_code>    — Register a team
-@Clerk Kent report <code>                      — Get latest round report
-@Clerk Kent untrack <team_code>                — Stop tracking
-@Clerk Kent tournaments                        — Show tracked tournaments
-```
+**Email parsing** (`email-parser.js`):
+- Format A ("Live Update"): subject `[TAB] Team Round N Event`, body has `Competitors` and `Judging` sections
+- Format B ("Round Assignments"): subject `[TAB] School Round Assignments`, body has `ENTRIES` section with indented data blocks
+- `isPairingEmail()` uses a signal-counting approach — checks for structural markers (Competitors, ENTRIES, Judges:, AFF/NEG, vs) and rejects logistics emails (check-in, payment, registration)
 
-## Files
-| File | Purpose |
-|------|---------|
-| `index.js` | Entry point — loads env vars, aliases, starts bot |
-| `bot.js` | Discord bot — commands, pairings pipeline orchestration |
-| `notion-service.js` | Notion API — judge search + data extraction |
-| `email-monitor.js` | Gmail IMAP polling for Tabroom pairing emails |
-| `email-parser.js` | Parses Tabroom email subject/body into structured data |
-| `caselist-service.js` | OpenCaselist API — opponent school/team/rounds lookup |
-| `paradigm-service.js` | Tabroom paradigm scraper (judge philosophy) |
-| `llm-service.js` | OpenAI wrapper for argument + paradigm summarization |
-| `channel-mapper.js` | Auto-maps team codes → Discord channels |
-| `report-builder.js` | Builds rich Discord embed reports |
-| `tournament-store.js` | Persists tournament tracking + session state |
-| `tabroom-scraper.js` | Scrapes Tabroom pairings pages |
-| `pairings-poller.js` | Legacy polling-based pairings checker |
+**OpenCaselist API** (`caselist-service.js`):
+- Auth: `POST https://api.opencaselist.com/v1/login` with Tabroom credentials → `caselist_token` cookie
+- Team lookup: parses team codes like `"Isidore Newman AW"` → school = `"Isidore Newman"`, suffix = `"AW"`
+- Uses Fuse.js fuzzy matching for school name resolution
+
+**Paradigm scraping** (`paradigm-service.js`):
+- Logs into Tabroom, searches by first/last name, handles single-result redirects
+- Parses paradigm HTML with cheerio (name, school, philosophy text)
+
+**LLM service** (`llm-service.js`):
+- Uses `gpt-4o-mini` for summarization
+- Falls back to `basicFrequencyAnalysis()` when no API key is set — pattern-matches debate argument keywords (hegemony, politics, capitalism, topicality, etc.) and counts frequencies
+
+**Session persistence** (`tournament-store.js`):
+- Stores to `tournaments.json` with backward-compatible format: `{ tournaments: {...}, activeSession: {...} }`
+- Tracks processed email UIDs to prevent duplicate reports
