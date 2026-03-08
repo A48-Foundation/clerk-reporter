@@ -61,10 +61,8 @@ class ReportBuilder {
       name = 'Unknown Judge',
       paradigmSummary,
       paradigmUrl,
-      school,
       notionNotes,
       notionUrl,
-      tabroomUrl,
     } = judgeData || {};
 
     const truncatedParadigm =
@@ -73,7 +71,6 @@ class ReportBuilder {
         : paradigmSummary;
 
     const fields = [
-      { name: 'School', value: school || 'N/A', inline: true },
       {
         name: 'Paradigm Summary',
         value: truncatedParadigm || 'Not found',
@@ -95,12 +92,6 @@ class ReportBuilder {
         inline: false,
       });
     }
-
-    fields.push({
-      name: 'Tabroom Link',
-      value: tabroomUrl ? `[View on Tabroom](${tabroomUrl})` : 'N/A',
-      inline: true,
-    });
 
     return new EmbedBuilder()
       .setTitle(`⚖️ ${name}`)

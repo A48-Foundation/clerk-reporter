@@ -193,7 +193,6 @@ describe('ReportBuilder', () => {
         name: 'Jenny Liu',
         paradigmSummary: 'Policy judge, prefers tech over truth.',
         paradigmUrl: 'https://tabroom.com/paradigm?id=123',
-        school: 'Stanford',
         notionNotes: '**1.** Good judge for K debates',
         notionUrl: 'https://notion.so/abc',
       };
@@ -207,7 +206,6 @@ describe('ReportBuilder', () => {
         embed.data.fields.map((f) => [f.name, f]),
       );
 
-      expect(fieldMap['School'].value).toBe('Stanford');
       expect(fieldMap['Paradigm Summary'].value).toBe(
         'Policy judge, prefers tech over truth.',
       );
@@ -223,6 +221,8 @@ describe('ReportBuilder', () => {
       expect(fieldMap['Notion Notes'].value).toContain(
         '**1.** Good judge for K debates',
       );
+      expect(fieldMap['School']).toBeUndefined();
+      expect(fieldMap['Tabroom Link']).toBeUndefined();
     });
 
     test('judge with no paradigm or notion shows minimal embed', () => {
@@ -234,10 +234,8 @@ describe('ReportBuilder', () => {
         embed.data.fields.map((f) => [f.name, f]),
       );
 
-      expect(fieldMap['School'].value).toBe('N/A');
       expect(fieldMap['Paradigm Summary'].value).toBe('Not found');
       expect(fieldMap['Paradigm Link'].value).toBe('N/A');
-      // No Notion Notes field when neither notionNotes nor notionUrl given
       expect(fieldMap['Notion Notes']).toBeUndefined();
     });
 
