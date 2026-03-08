@@ -31,7 +31,8 @@ class ReportBuilder {
 
     const opponentName = schoolName && oppCode ? `${schoolName} ${oppCode}` : (aff.teamCode === teamCode ? neg.teamCode : aff.teamCode) || 'TBD';
     const opponentSide = side === 'AFF' || side === 'Aff' ? 'Neg' : side === 'NEG' || side === 'Neg' ? 'Aff' : 'FLIP';
-    const caselistLink = caselistUrl ? ` — [Wiki](${caselistUrl})` : '';
+    // Our side label
+    const ourSide = side || 'FLIP';
 
     const fields = [
       { name: 'Room', value: room || 'N/A', inline: true },
@@ -39,9 +40,10 @@ class ReportBuilder {
     ];
 
     if (argumentSummary) {
+      const oppLink = caselistUrl ? `[${opponentName}](${caselistUrl})` : opponentName;
       fields.push({
-        name: `🐟 ${opponentName} (${opponentSide})${caselistLink}`,
-        value: argumentSummary,
+        name: `🐟 ${ourSide} v. ${opponentName} (${opponentSide})`,
+        value: (caselistUrl ? `[Wiki](${caselistUrl})\n` : '') + argumentSummary,
         inline: false,
       });
     }

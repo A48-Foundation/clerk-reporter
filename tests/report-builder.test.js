@@ -63,9 +63,9 @@ describe('ReportBuilder', () => {
       // Opponent info is a field with 🐟
       const oppField = embed.data.fields.find(f => f.name.includes('🐟'));
       expect(oppField).toBeDefined();
-      expect(oppField.name).toContain('Coppell PK');
-      expect(oppField.name).toContain('Wiki');
-      expect(oppField.value).toBe('2NR - Politics (3)');
+      expect(oppField.name).toContain('AFF v. Coppell PK (Neg)');
+      expect(oppField.value).toContain('[Wiki]');
+      expect(oppField.value).toContain('2NR - Politics (3)');
     });
 
     test('pairing without opponent shows basic fields', () => {
