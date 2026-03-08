@@ -13,7 +13,8 @@ Clerk Reporter monitors a Gmail inbox for [Tabroom](https://www.tabroom.com) pai
 When you activate the pairings pipeline during a tournament, the bot will automatically send a **scouting report** to each team's Discord channel every time Tabroom publishes a new pairing. Each report includes:
 
 - **Pairing summary** — round name, your side (Aff/Neg/Flip), opponent, room, and start time
-- **Opponent scouting** — arguments the opponent has read on the relevant side, pulled from OpenCaselist with frequency analysis (e.g. "Politics DA — 4x", "Hegemony 1AC — 3x")
+- **Opponent scouting** — arguments the opponent has read on the relevant side, pulled from OpenCaselist with frequency analysis (e.g. "1AC - PNT (6 occurrences)", "2NR - Politics (3 occurrences)")
+- **Open source documents** — if the opponent has open sourced their most recent aff or their most recent neg strategy vs your aff, the report includes a download link
 - **Judge info** — paradigm summary, Tabroom profile link, and any notes from your Notion judge database
 
 ### Commands
@@ -57,6 +58,14 @@ Manually add a team to the active session's tracking. Useful when a team wasn't 
 ```
 
 Deactivates the email monitor and clears the session.
+
+#### Set Your Aff
+
+```
+@Clerk Kent our aff is <name>
+```
+
+Sets the name of your team's current 1AC (e.g. `PNT`, `Science Diplomacy`). This is used when scouting opponents on **Neg** — the bot searches their caselist for rounds where they went neg against your aff. Defaults to `PNT`. Persists between sessions.
 
 #### Email Processing
 
@@ -272,16 +281,16 @@ npm start
 npm test
 ```
 
-The test suite includes **145 tests** across 6 files:
+The test suite includes **173 tests** across 6 files:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
 | `email-parser.test.js` | 63 | Subject/body parsing, pairing detection, LLM fallback, validation |
 | `channel-mapper.test.js` | 14 | Team suffix extraction, channel lookup, auto-mapping |
-| `report-builder.test.js` | 18 | Embed construction, field formatting, truncation, embed cap |
-| `llm-service.test.js` | — | Frequency analysis, paradigm truncation, LLM fallback |
-| `caselist-service.test.js` | — | Team code parsing, school lookup, wiki URL construction |
-| `tournament-store.test.js` | 33 | Load/save, team tracking, session management, email UID tracking |
+| `report-builder.test.js` | 21 | Embed construction, doc link fields, truncation, embed cap |
+| `llm-service.test.js` | 11 | Frequency analysis, paradigm truncation, LLM fallback |
+| `caselist-service.test.js` | 31 | Team code parsing, school lookup, wiki URL construction, entry name matching |
+| `tournament-store.test.js` | 33 | Load/save, team tracking, session management, email UID tracking, settings |
 
 Test fixtures live in `tests/fixtures/emails.js` — real email samples with pre-calculated expected outputs.
 
@@ -302,17 +311,13 @@ Test fixtures live in `tests/fixtures/emails.js` — real email samples with pre
 
 **OpenCaselist API** (`caselist-service.js`):
 - Auth: `POST https://api.opencaselist.com/v1/login` with Tabroom credentials → `caselist_token` cookie
-- Team lookup: parses team codes like `"Isidore Newman AW"` → school = `"Isidore Newman"`, suffix = `"AW"`
+- Team lookup: uses Tabroom entry names (e.g. "Levine & Zhang") to derive caselist slug (e.g. "LeZh") via 3-strategy matching
 - Uses Fuse.js fuzzy matching for school name resolution
-
-**Paradigm scraping** (`paradigm-service.js`):
-- Logs into Tabroom, searches by first/last name, handles single-result redirects
-- Parses paradigm HTML with cheerio (name, school, philosophy text)
-
-**LLM service** (`llm-service.js`):
-- Uses `gpt-4o-mini` for summarization
-- Falls back to `basicFrequencyAnalysis()` when no API key is set — pattern-matches debate argument keywords (hegemony, politics, capitalism, topicality, etc.) and counts frequencies
+- `getLatestAffDoc()` — finds opponent's most recent open-sourced aff document
+- `getNegVsAff()` — searches opponent's neg rounds for strategies against your aff (fuzzy matches report text)
+- Download URL: `GET https://api.opencaselist.com/v1/download?path=<opensource_path>`
 
 **Session persistence** (`tournament-store.js`):
-- Stores to `tournaments.json` with backward-compatible format: `{ tournaments: {...}, activeSession: {...} }`
+- Stores to `tournaments.json` with format: `{ tournaments: {...}, activeSession: {...}, settings: {...} }`
 - Tracks processed email UIDs to prevent duplicate reports
+- `settings.ourAff` persists the team's current aff name across sessions (default: "PNT")
