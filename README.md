@@ -297,6 +297,30 @@ Create channels following the `{suffix}-tournaments` pattern for each team:
 npm start
 ```
 
+#### 7. Deploy to Railway (Optional)
+
+1. Push your repo to GitHub
+2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub Repo**
+3. Select the `clerk-reporter` repository
+4. Railway auto-detects Node.js. The `Procfile` runs it as a **worker** (no web port needed)
+5. Add environment variables in **Settings → Variables**:
+
+   ```
+   DISCORD_TOKEN=MTIz...
+   NOTION_TOKEN=secret_abc123...
+   JUDGE_DATABASE_ID=abc123-def456-...
+   TABROOM_EMAIL=your@email.com
+   TABROOM_PASSWORD=your_tabroom_password
+   IMAP_EMAIL=clerk.kent.debate@gmail.com
+   IMAP_PASSWORD=abcdefghijklmnop
+   OPENAI_API_KEY=sk-...
+   SCHOOL_NAMES=Interlake,Cuttlefish,Cuttlefish Independent
+   ```
+
+6. Deploy — the bot will start automatically and reconnect on restarts
+
+> **Note:** `tournaments.json` (session state) is ephemeral on Railway — it resets on each deploy. The bot auto-restores email monitoring from persisted sessions, but channel mappings will need to be re-confirmed after a fresh deploy.
+
 ### Running Tests
 
 ```bash
