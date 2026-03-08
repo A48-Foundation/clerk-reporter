@@ -124,10 +124,9 @@ class ReportBuilder {
 
     const lines = rows.map(r => {
       const watchTag = r.watched ? ' 👁️' : '';
-      const argShort = r.args.length > 60 ? r.args.slice(0, 57) + '...' : r.args;
       return `**${r.team}** (${r.side}) v. ${r.opponent}${watchTag}\n` +
              `┗ 📍 ${r.room} │ ⚖️ ${r.judges}\n` +
-             `┗ 📄 ${argShort}`;
+             `┗ 📄 ${r.args}`;
     });
 
     const description = lines.join('\n\n') || '_No pairings collected._';

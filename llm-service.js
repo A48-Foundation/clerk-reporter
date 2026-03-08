@@ -51,12 +51,12 @@ class LlmService {
       let arg = null;
 
       if (side === 'A') {
-        const match = text.match(/1ac\s+(?:was\s+)?(.+?)(?:\s*[;,]|$)/i)
+        const match = text.match(/1ac\s*[-:.]?\s*(?:was\s+)?(.+?)(?:\s*[;,]|$)/i)
           || text.match(/(?:we\s+)?ran\s+(.+?)(?:\s*[;,]|$)/i)
           || text.match(/^(.+?)(?:\s*[;,])/i);
         if (match) arg = match[1].trim();
       } else {
-        const match = text.match(/2nr\s+(?:was\s+)?(.+?)(?:\s*[;,.]|$)/i);
+        const match = text.match(/2nr\s*[-:.]?\s*(?:was\s+)?(.+?)(?:\s*[;,.]|$)/i);
         if (match) arg = match[1].trim();
       }
 
@@ -99,7 +99,7 @@ class LlmService {
       const docRound = this._findNegDocRound(reportsWithText, negContext.ourAff, sorted[0]?.display);
       if (docRound && docRound.opensource) {
         const url = getDownloadUrl(docRound.opensource);
-        const acMatch = docRound.report.match(/1ac\s+(?:was\s+)?(.+?)(?:\s*[;,]|$)/i);
+        const acMatch = docRound.report.match(/1ac\s*[-:.]?\s*(?:was\s+)?(.+?)(?:\s*[;,]|$)/i);
         const acName = acMatch ? acMatch[1].trim() : 'unknown';
         lines.push(`📄 [Open Source](${url}) — neg vs ${acName}, ${docRound.tournament} R${docRound.round}`);
       }
@@ -125,7 +125,7 @@ class LlmService {
         const report = r.report.toLowerCase();
         if (report.includes(affLower)) return true;
         if (report.includes(affAbbrev)) return true;
-        const acMatch = report.match(/1ac\s+(?:was\s+)?(.+?)(?:\s*[;,]|$)/i);
+        const acMatch = report.match(/1ac\s*[-:.]?\s*(?:was\s+)?(.+?)(?:\s*[;,]|$)/i);
         if (acMatch) {
           const ac = acMatch[1].trim().toLowerCase();
           if (ac.includes(affLower) || affLower.includes(ac)) return true;
@@ -140,7 +140,7 @@ class LlmService {
       const common = mostCommon2NR.toLowerCase();
       const fallback = [...rounds].reverse().find(r => {
         if (!r.opensource || !r.report) return false;
-        const nrMatch = r.report.match(/2nr\s+(?:was\s+)?(.+?)(?:\s*[;,.]|$)/i);
+        const nrMatch = r.report.match(/2nr\s*[-:.]?\s*(?:was\s+)?(.+?)(?:\s*[;,.]|$)/i);
         if (nrMatch && nrMatch[1].trim().toLowerCase() === common) return true;
         return false;
       });

@@ -283,12 +283,12 @@ describe('ReportBuilder', () => {
       expect(embed.data.title).toBe('📊 All-Team Report — R6');
     });
 
-    test('truncates long argument text', () => {
+    test('does not truncate long argument text', () => {
       const rows = [
         { team: 'A', side: 'AFF', opponent: 'B', room: 'R1', args: 'X'.repeat(100), judges: 'J' },
       ];
       const embed = builder.buildAllTeamEmbed('round_1', rows);
-      expect(embed.data.description).toContain('...');
+      expect(embed.data.description).toContain('X'.repeat(100));
     });
   });
 });

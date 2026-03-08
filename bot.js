@@ -778,12 +778,12 @@ class ClerkKentBot {
       judges: judgeNames,
     });
 
-    // Reset the flush timer — flush 2 minutes after the last pairing arrives
+    // Reset the flush timer — flush 30s after the last pairing arrives
     if (batch.timer) clearTimeout(batch.timer);
-    batch.timer = setTimeout(() => this._flushRoundBatch(roundKey), 120000);
+    batch.timer = setTimeout(() => this._flushRoundBatch(roundKey), 30000);
 
-    // Hard cap: if 10 minutes since first pairing, flush now
-    if (now - batch.firstSeen >= 600000) {
+    // Hard cap: if 3 minutes since first pairing, flush now
+    if (now - batch.firstSeen >= 180000) {
       clearTimeout(batch.timer);
       this._flushRoundBatch(roundKey);
     }
@@ -870,8 +870,8 @@ class ClerkKentBot {
     });
 
     if (batch.timer) clearTimeout(batch.timer);
-    batch.timer = setTimeout(() => this._flushRoundBatch(roundKey), 120000);
-    if (now - batch.firstSeen >= 600000) {
+    batch.timer = setTimeout(() => this._flushRoundBatch(roundKey), 30000);
+    if (now - batch.firstSeen >= 180000) {
       clearTimeout(batch.timer);
       this._flushRoundBatch(roundKey);
     }

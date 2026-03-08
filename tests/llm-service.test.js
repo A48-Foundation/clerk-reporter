@@ -80,6 +80,35 @@ describe('LlmService', () => {
       expect(result).toContain('2NR - T');
     });
 
+    test('extracts 2NR with dash separator (2NR- Set Col K)', () => {
+      const rounds = [
+        { tournament: 'TOC', round: '1', report: '1ac PNT; 2NR- Set Col K' },
+        { tournament: 'Harvard', round: '2', report: '1ac PNT; 2NR- Set Col K' },
+        { tournament: 'Greenhill', round: '3', report: '1ac SSP; 2NR- T' },
+      ];
+      const result = service.summarizeArguments(rounds, 'N');
+      expect(result).toContain('2NR - Set Col K (2)');
+      expect(result).toContain('2NR - T (1)');
+    });
+
+    test('extracts 1AC with dash separator (1AC- PNT)', () => {
+      const rounds = [
+        { tournament: 'TOC', round: '1', report: '1AC- PNT; 2NR T' },
+      ];
+      const result = service.summarizeArguments(rounds, 'A');
+      expect(result).toContain('1AC - PNT');
+    });
+
+    test('extracts arguments with colon separator (2NR: T)', () => {
+      const rounds = [
+        { tournament: 'TOC', round: '1', report: '1ac: PNT; 2NR: china soft' },
+      ];
+      const resultA = service.summarizeArguments(rounds, 'A');
+      const resultN = service.summarizeArguments(rounds, 'N');
+      expect(resultA).toContain('1AC - PNT');
+      expect(resultN).toContain('2NR - china soft');
+    });
+
     test('deduplicates same arguments (case-insensitive)', () => {
       const rounds = [
         { tournament: 'T1', round: '1', report: '1ac PNT' },
