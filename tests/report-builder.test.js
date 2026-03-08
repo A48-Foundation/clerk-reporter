@@ -2,7 +2,7 @@
 jest.mock('discord.js', () => {
   class MockEmbedBuilder {
     constructor() {
-      this.data = { title: null, color: null, fields: [], description: null };
+      this.data = { title: null, color: null, fields: [], description: null, footer: null };
     }
     setTitle(t) { this.data.title = t; return this; }
     setColor(c) { this.data.color = c; return this; }
@@ -14,6 +14,7 @@ jest.mock('discord.js', () => {
     }
     setURL(u) { this.data.url = u; return this; }
     setTimestamp() { return this; }
+    setFooter(f) { this.data.footer = f; return this; }
   }
   return { EmbedBuilder: MockEmbedBuilder };
 });
@@ -237,6 +238,57 @@ describe('ReportBuilder', () => {
       const pairing = { roundTitle: 'R1', teamCode: 'A', aff: {}, neg: {} };
       const embeds = builder.buildFullReport(pairing, null, []);
       expect(embeds).toHaveLength(1);
+    });
+  });
+
+  // ── buildAllTeamEmbed ──────────────────────────────────────────────
+
+  describe('buildAllTeamEmbed', () => {
+    test('builds compact all-team embed with multiple rows', () => {
+      const rows = [
+        { team: 'Cuttlefish CG', side: 'AFF', opponent: 'Coppell PK', room: 'Room 5', args: '2NR - Politics (3)', judges: 'Smith' },
+        { team: 'Interlake OC', side: 'NEG', opponent: 'North Hollywood LZ', room: 'Room 8', args: '1AC - PNT (6)', judges: 'Jones, Lee' },
+      ];
+
+      const embed = builder.buildAllTeamEmbed('round_4', rows);
+
+      expect(embed.data.title).toBe('📊 All-Team Report — R4');
+      expect(embed.data.color).toBe(0x9b59b6);
+      expect(embed.data.description).toContain('Cuttlefish CG');
+      expect(embed.data.description).toContain('Interlake OC');
+      expect(embed.data.description).toContain('Politics');
+      expect(embed.data.description).toContain('PNT');
+      expect(embed.data.description).toContain('Smith');
+      expect(embed.data.description).toContain('Jones, Lee');
+      expect(embed.data.footer.text).toBe('2 pairing(s)');
+    });
+
+    test('watched rows get eye emoji', () => {
+      const rows = [
+        { team: 'Greenhill AB', side: 'AFF', opponent: 'Dulles CD', room: 'Room 1', args: '—', judges: 'Patel', watched: true },
+      ];
+
+      const embed = builder.buildAllTeamEmbed('round_1', rows);
+      expect(embed.data.description).toContain('👁️');
+    });
+
+    test('empty rows show placeholder', () => {
+      const embed = builder.buildAllTeamEmbed('round_5', []);
+      expect(embed.data.description).toBe('_No pairings collected._');
+      expect(embed.data.footer.text).toBe('0 pairing(s)');
+    });
+
+    test('round key with full title gets shortened', () => {
+      const embed = builder.buildAllTeamEmbed('round_6_of_policy_-_open', []);
+      expect(embed.data.title).toBe('📊 All-Team Report — R6');
+    });
+
+    test('truncates long argument text', () => {
+      const rows = [
+        { team: 'A', side: 'AFF', opponent: 'B', room: 'R1', args: 'X'.repeat(100), judges: 'J' },
+      ];
+      const embed = builder.buildAllTeamEmbed('round_1', rows);
+      expect(embed.data.description).toContain('...');
     });
   });
 });

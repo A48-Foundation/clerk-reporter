@@ -29,6 +29,9 @@ class ClerkKentBot {
     this.paradigmService = new ParadigmService();
     this.llmService = new LlmService();
     this.reportBuilder = new ReportBuilder();
+    this._roundBatches = {};       // { roundKey: { rows: [], timer, firstSeen } }
+    this._allTeamChannelId = null; // channel for all-team report
+    this._watchFilters = [];       // extra watch filters: [{ type: 'team'|'judge', value: '...' }]
     this.setupEventHandlers();
   }
 
@@ -95,6 +98,22 @@ class ClerkKentBot {
 
     if (lowerContent.startsWith('add entry ')) {
       await this.handleAddEntry(message, content.slice('add entry '.length).trim());
+      return;
+    }
+
+    if (/^all[- ]?team\s+(report|channel)/i.test(lowerContent)) {
+      await this.handleSetAllTeamChannel(message, content);
+      return;
+    }
+
+    if (/^watch\s+/i.test(lowerContent)) {
+      await this.handleWatch(message, content.slice('watch '.length).trim());
+      return;
+    }
+
+    if (lowerContent === 'unwatch all') {
+      this._watchFilters = [];
+      await message.reply('✅ Cleared all watch filters.');
       return;
     }
 
@@ -225,7 +244,9 @@ class ClerkKentBot {
         .setDescription(
           lines.join('\n') + '\n\n' +
           'Click **Confirm** to start monitoring, or type overrides like `OC=#some-channel`.\n' +
-          'Use `@Clerk Kent add entry <code> #channel` to manually add entries.'
+          'Use `@Clerk Kent add entry <code> #channel` to manually add entries.\n\n' +
+          '📊 **All-team report:** `@Clerk Kent all-team report #channel` to set a channel for round summaries.\n' +
+          '👁️ **Watch:** `@Clerk Kent watch team <name>` or `watch judge <name>` to add non-team pairings.'
         )
         .setColor(0x5865f2);
 
@@ -452,6 +473,50 @@ class ClerkKentBot {
   }
 
   /**
+   * Handle: @Clerk Kent all-team report #channel
+   * Sets the channel for the compact all-team round summary.
+   */
+  async handleSetAllTeamChannel(message, content) {
+    const channelMention = content.match(/<#(\d+)>/);
+    let channelId;
+
+    if (channelMention) {
+      channelId = channelMention[1];
+    } else {
+      const nameMatch = content.match(/#([\w-]+)/);
+      if (nameMatch) {
+        for (const [, guild] of this.client.guilds.cache) {
+          const found = guild.channels.cache.find(c => c.name.toLowerCase() === nameMatch[1].toLowerCase());
+          if (found) { channelId = found.id; break; }
+        }
+      }
+    }
+
+    if (!channelId) {
+      channelId = message.channel.id;
+    }
+
+    this._allTeamChannelId = channelId;
+    await message.reply(`✅ All-team report will be posted to <#${channelId}>.`);
+  }
+
+  /**
+   * Handle: @Clerk Kent watch team <name> or @Clerk Kent watch judge <name>
+   * Adds a manual watch filter — pairings involving these will appear in the all-team report.
+   */
+  async handleWatch(message, args) {
+    const typeMatch = args.match(/^(team|judge)\s+(.+)$/i);
+    if (!typeMatch) {
+      await message.reply('**Usage:** `@Clerk Kent watch team North Hollywood LZ` or `@Clerk Kent watch judge Smith`');
+      return;
+    }
+    const type = typeMatch[1].toLowerCase();
+    const value = typeMatch[2].trim();
+    this._watchFilters.push({ type, value });
+    await message.reply(`✅ Watching ${type}: **${value}** — will include in all-team report.`);
+  }
+
+  /**
    * Handle an incoming pairing event from the EmailMonitor.
    * Uses parseWithFallback (regex first, then LLM) and validates required fields.
    * Routes each team's pairing to _processSinglePairing().
@@ -537,6 +602,8 @@ class ClerkKentBot {
           opponentSide = 'A';
           side = 'NEG';
         } else {
+          // Not our team — check watch filters for all-team report
+          this._checkWatchFilters(parsed);
           return;
         }
 
@@ -664,6 +731,149 @@ class ClerkKentBot {
     if (embeds.length > 0) {
       await channel.send({ embeds: embeds.slice(0, 10) });
       console.log(`✅ Sent pairings report for ${ourTeamCode} (${roundTitle || 'Round ' + (roundNumber || '?')})`);
+    }
+
+    // Collect row for the all-team report
+    this._addToRoundBatch(pairing, opponentData, judgeEmbedData);
+  }
+
+  // ─── ALL-TEAM ROUND REPORT ─────────────────────────────────────
+
+  /**
+   * Add a pairing row to the current round batch.
+   * Pairings for the same round within 10 minutes are grouped together.
+   */
+  _addToRoundBatch(pairing, opponentData, judgeEmbedData) {
+    if (!this._allTeamChannelId) return;
+
+    const { ourTeamCode, opponentCode, side, room, judges, roundTitle, roundNumber } = pairing;
+    const roundKey = (roundTitle || `Round ${roundNumber || '?'}`).replace(/\s+/g, '_').toLowerCase();
+    const now = Date.now();
+
+    if (!this._roundBatches[roundKey]) {
+      this._roundBatches[roundKey] = { rows: [], firstSeen: now, timer: null };
+    }
+
+    const batch = this._roundBatches[roundKey];
+
+    // Extract compact argument summary (just the argument names, no links)
+    let argBrief = '—';
+    if (opponentData?.argumentSummary && opponentData.argumentSummary !== '_No caselist data found._') {
+      const argLines = opponentData.argumentSummary.split('\n')
+        .filter(l => l.startsWith('1AC') || l.startsWith('2NR'))
+        .map(l => l.replace(/\s*-\s*\[Docs\]\([^)]*\)/g, '').trim());
+      if (argLines.length > 0) argBrief = argLines.join(', ');
+    }
+
+    const judgeNames = judgeEmbedData.map(j => j.name).join(', ') || '—';
+
+    batch.rows.push({
+      team: ourTeamCode,
+      side: side || 'FLIP',
+      opponent: opponentData?.teamCode
+        ? `${opponentData.schoolName || ''} ${opponentData.teamCode}`.trim()
+        : (opponentCode || 'TBD'),
+      room: room || '—',
+      args: argBrief,
+      judges: judgeNames,
+    });
+
+    // Reset the flush timer — flush 2 minutes after the last pairing arrives
+    if (batch.timer) clearTimeout(batch.timer);
+    batch.timer = setTimeout(() => this._flushRoundBatch(roundKey), 120000);
+
+    // Hard cap: if 10 minutes since first pairing, flush now
+    if (now - batch.firstSeen >= 600000) {
+      clearTimeout(batch.timer);
+      this._flushRoundBatch(roundKey);
+    }
+  }
+
+  /**
+   * Check if a pairing matches any manual watch filters.
+   */
+  _matchesWatchFilter(pairingData) {
+    if (this._watchFilters.length === 0) return false;
+    const { opponentCode, judges } = pairingData;
+    return this._watchFilters.some(f => {
+      if (f.type === 'team') {
+        return opponentCode && opponentCode.toLowerCase().includes(f.value.toLowerCase());
+      }
+      if (f.type === 'judge') {
+        return judges && judges.some(j =>
+          j.name && j.name.toLowerCase().includes(f.value.toLowerCase())
+        );
+      }
+      return false;
+    });
+  }
+
+  /**
+   * Flush a round batch — send the all-team summary embed.
+   */
+  async _flushRoundBatch(roundKey) {
+    const batch = this._roundBatches[roundKey];
+    if (!batch || batch.rows.length === 0) return;
+    delete this._roundBatches[roundKey];
+
+    try {
+      const channel = await this.client.channels.fetch(this._allTeamChannelId);
+      if (!channel) return;
+
+      const embed = this.reportBuilder.buildAllTeamEmbed(roundKey, batch.rows);
+      await channel.send({ embeds: [embed] });
+      console.log(`✅ Sent all-team report for ${roundKey} (${batch.rows.length} pairings)`);
+    } catch (err) {
+      console.error(`[AllTeamReport] Error flushing ${roundKey}:`, err.message);
+    }
+  }
+
+  /**
+   * Check if a non-our-team pairing matches watch filters and add to batch.
+   */
+  _checkWatchFilters(parsed) {
+    if (!this._allTeamChannelId || this._watchFilters.length === 0) return;
+
+    const affCode = parsed.aff?.teamCode || '';
+    const negCode = parsed.neg?.teamCode || '';
+    const judgeNames = (parsed.judges || []).map(j => j.name);
+    const roundTitle = parsed.roundTitle || `Round ${parsed.roundNumber || '?'}`;
+    const roundKey = roundTitle.replace(/\s+/g, '_').toLowerCase();
+
+    const matched = this._watchFilters.some(f => {
+      if (f.type === 'team') {
+        return affCode.toLowerCase().includes(f.value.toLowerCase()) ||
+               negCode.toLowerCase().includes(f.value.toLowerCase());
+      }
+      if (f.type === 'judge') {
+        return judgeNames.some(n => n && n.toLowerCase().includes(f.value.toLowerCase()));
+      }
+      return false;
+    });
+
+    if (!matched) return;
+
+    const now = Date.now();
+    if (!this._roundBatches[roundKey]) {
+      this._roundBatches[roundKey] = { rows: [], firstSeen: now, timer: null };
+    }
+
+    const batch = this._roundBatches[roundKey];
+    batch.rows.push({
+      team: affCode || 'TBD',
+      side: 'AFF',
+      opponent: negCode || 'TBD',
+      room: parsed.room || '—',
+      args: '—',
+      judges: judgeNames.join(', ') || '—',
+      watched: true,
+    });
+
+    if (batch.timer) clearTimeout(batch.timer);
+    batch.timer = setTimeout(() => this._flushRoundBatch(roundKey), 120000);
+    if (now - batch.firstSeen >= 600000) {
+      clearTimeout(batch.timer);
+      this._flushRoundBatch(roundKey);
     }
   }
 
