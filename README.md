@@ -23,22 +23,32 @@ All commands start by @-mentioning the bot.
 #### Start Automated Reports
 
 ```
-@Clerk Kent initiate pairings reports <tabroom_url>
+@Clerk Kent initiate pairings reports <tabroom_entries_url>
 ```
 
-Provide any Tabroom pairings page URL (one that contains a `tourn_id` and optionally a `round_id`). The bot will:
+Provide a link to the tournament **entries** page on Tabroom (with `tourn_id` and `event_id`). The bot will:
 
-1. Scrape the current pairings to find all your teams (Interlake, Cuttlefish, etc.)
-2. Propose a channel mapping (e.g. **Interlake CG** → **#cg-tournaments**)
-3. Wait for you to confirm (react ✅) or type overrides (e.g. `CG=#my-channel`)
-4. Start monitoring the email inbox for new pairing notifications
+1. Log into Tabroom and scrape the entries list for that event
+2. Identify all your teams (based on `SCHOOL_NAMES`)
+3. Propose a channel mapping and show **Confirm** / **Cancel** buttons
+4. On confirm, start monitoring the email inbox for pairing notifications
 5. Automatically send scouting reports as rounds are paired
 
 **Example:**
 
 ```
-@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/postings/round.mhtml?tourn_id=36452&round_id=1503711
+@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080
 ```
+
+If you only provide a `tourn_id` (no `event_id`), the bot will list available events and auto-select if there's exactly one policy event.
+
+#### Add Manual Entries
+
+```
+@Clerk Kent add entry <team_code> #channel-name
+```
+
+Manually add a team to the active session's tracking. Useful when a team wasn't found in the scraped entries, or to override the auto-mapped channel. If no channel is specified, defaults to the current channel.
 
 #### Stop Automated Reports
 
@@ -47,6 +57,13 @@ Provide any Tabroom pairings page URL (one that contains a `tourn_id` and option
 ```
 
 Deactivates the email monitor and clears the session.
+
+#### Email Processing
+
+When a pairing email arrives, the bot:
+1. **Tries regex parsing first** — matches both Format A (live updates) and Format B (round assignments)
+2. **Falls back to LLM** if regex can't extract complete data (requires OpenAI API key)
+3. **Validates** the email has an opponent, team, judge, and start time — skips if any are missing
 
 #### Manual Team Tracking
 
@@ -129,13 +146,16 @@ Tabroom emails → Gmail IMAP
                      │
             isPairingEmail() filter
                      │
-            EmailParser.parse()
+     ┌───── Regex parse (Format A / B) ─────┐
+     │                                       │
+  Complete?                           Incomplete?
+     │                                       │
+     │                              LLM fallback parse
+     │                                       │
+     └───────────────┬───────────────────────┘
                      │
-         ┌───────────┴───────────┐
-     Format A               Format B
-   (1 team/email)       (N teams/email)
-         │                       │
-         └───────────┬───────────┘
+          Validate: opponent + team + judge + startTime
+          (skip if any missing)
                      │
           handlePairingEvent()
                      │
@@ -252,11 +272,11 @@ npm start
 npm test
 ```
 
-The test suite includes **134 tests** across 6 files:
+The test suite includes **145 tests** across 6 files:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
-| `email-parser.test.js` | 52 | Subject/body parsing for both formats, pairing detection, edge cases |
+| `email-parser.test.js` | 63 | Subject/body parsing, pairing detection, LLM fallback, validation |
 | `channel-mapper.test.js` | 14 | Team suffix extraction, channel lookup, auto-mapping |
 | `report-builder.test.js` | 18 | Embed construction, field formatting, truncation, embed cap |
 | `llm-service.test.js` | — | Frequency analysis, paradigm truncation, LLM fallback |
@@ -271,6 +291,14 @@ Test fixtures live in `tests/fixtures/emails.js` — real email samples with pre
 - Format A ("Live Update"): subject `[TAB] Team Round N Event`, body has `Competitors` and `Judging` sections
 - Format B ("Round Assignments"): subject `[TAB] School Round Assignments`, body has `ENTRIES` section with indented data blocks
 - `isPairingEmail()` uses a signal-counting approach — checks for structural markers (Competitors, ENTRIES, Judges:, AFF/NEG, vs) and rejects logistics emails (check-in, payment, registration)
+- `parseWithFallback()` tries regex first, falls back to LLM if incomplete, validates required fields (opponent, team, judge, startTime)
+- `_isCompletePairing()` ensures all critical fields are present before generating a report
+
+**Tournament setup** (`tabroom-scraper.js` + `bot.js`):
+- Authenticates with Tabroom to access entries pages
+- Scrapes entries from `/index/tourn/fields.mhtml?tourn_id=X&event_id=Y` (table with Institution/Location/Entry/Code columns)
+- Discord buttons (ActionRowBuilder + ButtonBuilder) for Confirm/Cancel interaction
+- `add entry` command for manual team→channel mapping overrides
 
 **OpenCaselist API** (`caselist-service.js`):
 - Auth: `POST https://api.opencaselist.com/v1/login` with Tabroom credentials → `caselist_token` cookie
