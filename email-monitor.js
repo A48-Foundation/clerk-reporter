@@ -9,37 +9,69 @@ class EmailMonitor extends EventEmitter {
     this.email = options.email || process.env.IMAP_EMAIL;
     this.password = options.password || process.env.IMAP_PASSWORD;
     this.pollInterval = options.pollInterval || 30000;
+    this.maxReconnectDelay = options.maxReconnectDelay || 300000; // 5 min cap
     this._pollTimer = null;
     this._imap = null;
+    this._stopped = false;
+    this._reconnectAttempts = 0;
   }
 
   start() {
+    this._stopped = false;
+    this._reconnectAttempts = 0;
+    this._connect();
+  }
+
+  _connect() {
+    if (this._stopped) return;
+
     this._imap = new Imap({
       user: this.email,
       password: this.password,
       host: 'imap.gmail.com',
       port: 993,
       tls: true,
-      tlsOptions: { rejectUnauthorized: false }
+      tlsOptions: { rejectUnauthorized: false },
+      keepalive: { interval: 10000, idleInterval: 300000, forceNoop: true }
     });
 
     this._imap.once('ready', () => {
+      this._reconnectAttempts = 0;
       this.emit('connected');
       this._startPolling();
     });
 
     this._imap.once('error', (err) => {
+      console.error('[EmailMonitor] IMAP error:', err.message);
       this.emit('error', err);
+      this._scheduleReconnect();
     });
 
     this._imap.once('end', () => {
+      console.warn('[EmailMonitor] IMAP connection ended');
       this.emit('disconnected');
+      this._scheduleReconnect();
     });
 
     this._imap.connect();
   }
 
+  _scheduleReconnect() {
+    if (this._stopped) return;
+    if (this._pollTimer) {
+      clearTimeout(this._pollTimer);
+      this._pollTimer = null;
+    }
+    this._imap = null;
+
+    this._reconnectAttempts++;
+    const delay = Math.min(1000 * Math.pow(2, this._reconnectAttempts), this.maxReconnectDelay);
+    console.log(`[EmailMonitor] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${this._reconnectAttempts})...`);
+    this._pollTimer = setTimeout(() => this._connect(), delay);
+  }
+
   stop() {
+    this._stopped = true;
     if (this._pollTimer) {
       clearTimeout(this._pollTimer);
       this._pollTimer = null;
