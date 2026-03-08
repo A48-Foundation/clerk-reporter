@@ -50,16 +50,14 @@ describe('ReportBuilder', () => {
 
       const embed = builder.buildPairingEmbed(pairing, opponent);
 
-      expect(embed.data.title).toBe('📋 Round 4 of Policy');
+      expect(embed.data.title).toBe('📋 R4');
       expect(embed.data.color).toBe(0xf5a623);
 
       const fieldMap = Object.fromEntries(
         embed.data.fields.map((f) => [f.name, f]),
       );
 
-      expect(fieldMap['Matchup'].value).toContain('**Interlake OC**');
-      expect(fieldMap['Matchup'].value).toContain('Coppell PK');
-      expect(fieldMap['Room'].value).toBe('NSDA Section 18');
+                  expect(fieldMap['Room'].value).toBe('NSDA Section 18');
       expect(fieldMap['Start'].value).toBe('5:30 PST');
 
       // Opponent info is a field with 🐟
@@ -83,12 +81,11 @@ describe('ReportBuilder', () => {
 
       const embed = builder.buildPairingEmbed(pairing, null);
 
-      expect(embed.data.fields).toHaveLength(3); // Matchup, Room, Start
+      expect(embed.data.fields).toHaveLength(2); // Room, Start
       const fieldMap = Object.fromEntries(
         embed.data.fields.map((f) => [f.name, f]),
       );
-      expect(fieldMap['Matchup'].value).toContain('**Team A**');
-    });
+          });
 
     test('null room and start produce N/A', () => {
       const pairing = {
@@ -207,7 +204,7 @@ describe('ReportBuilder', () => {
 
       // 1 merged pairing+opponent + 2 judges = 3
       expect(embeds).toHaveLength(3);
-      expect(embeds[0].data.title).toBe('📋 Round 1');
+      expect(embeds[0].data.title).toBe('📋 R1');
       expect(embeds[1].data.title).toBe('⚖️ Judge Alpha');
       expect(embeds[2].data.title).toBe('⚖️ Judge Beta');
     });
@@ -216,7 +213,7 @@ describe('ReportBuilder', () => {
       const pairing = { roundTitle: 'Round 2', teamCode: 'X', aff: {}, neg: {} };
       const embeds = builder.buildFullReport(pairing, null, null);
       expect(embeds).toHaveLength(1);
-      expect(embeds[0].data.title).toBe('📋 Round 2');
+      expect(embeds[0].data.title).toBe('📋 R2');
     });
 
     test('11 judges are capped at 10 total embeds', () => {
@@ -228,7 +225,7 @@ describe('ReportBuilder', () => {
 
       // 1 merged + 9 judges = 10
       expect(embeds).toHaveLength(10);
-      expect(embeds[0].data.title).toBe('📋 Round 3');
+      expect(embeds[0].data.title).toBe('📋 R3');
       expect(embeds[9].data.title).toBe('⚖️ Judge 9');
     });
 

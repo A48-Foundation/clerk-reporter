@@ -24,12 +24,16 @@ class ReportBuilder {
       return code === teamCode ? `**${code}**` : code;
     };
 
+    // Shorten round title: "Round 6 of Policy - Open" → "R6"
+    let shortTitle = roundTitle;
+    const roundMatch = roundTitle.match(/round\s+(\d+)/i);
+    if (roundMatch) shortTitle = `R${roundMatch[1]}`;
+
     const opponentName = schoolName && oppCode ? `${schoolName} ${oppCode}` : (aff.teamCode === teamCode ? neg.teamCode : aff.teamCode) || 'TBD';
     const opponentSide = side === 'AFF' || side === 'Aff' ? 'Neg' : side === 'NEG' || side === 'Neg' ? 'Aff' : 'FLIP';
     const caselistLink = caselistUrl ? ` — [Wiki](${caselistUrl})` : '';
 
     const fields = [
-      { name: 'Matchup', value: `${formatTeam(aff.teamCode)} (Aff) vs ${formatTeam(neg.teamCode)} (Neg)`, inline: false },
       { name: 'Room', value: room || 'N/A', inline: true },
       { name: 'Start', value: startTime || 'N/A', inline: true },
     ];
@@ -43,7 +47,7 @@ class ReportBuilder {
     }
 
     return new EmbedBuilder()
-      .setTitle(`📋 ${roundTitle}`)
+      .setTitle(`📋 ${shortTitle}`)
       .setColor(0xf5a623)
       .addFields(fields);
   }
