@@ -91,6 +91,11 @@ class EmailParser {
       const trimmed = raw.trim();
       if (trimmed === '') continue;
 
+      // Stop parsing at footer separators or Tabroom footer boilerplate
+      if (/^-{3,}$/.test(trimmed)) break;
+      if (/^You received this email/i.test(trimmed)) break;
+      if (/^To stop them/i.test(trimmed)) break;
+
       if (/^competitors$/i.test(trimmed)) {
         section = 'competitors';
         currentSide = null;
@@ -111,11 +116,9 @@ class EmailParser {
           currentSide = sideMatch[1].toUpperCase() === 'AFF' ? 'aff' : 'neg';
           result.competitors[currentSide].teamCode = sideMatch[2].trim();
         } else if (currentSide) {
-          // Any non-AFF/NEG line in the Competitors section is debater names
           result.competitors[currentSide].names.push(...parseNames(trimmed));
         }
       } else if (section === 'judging') {
-        // A line that looks like pronouns (e.g. "He/Him", "she/her") → attach to current judge
         if (currentJudge && isPronounLine(trimmed)) {
           currentJudge.pronouns = trimmed;
           flushJudge(result, currentJudge);

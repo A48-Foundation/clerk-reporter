@@ -29,7 +29,7 @@ describe('LlmService', () => {
     }
   });
 
-  describe('basicFrequencyAnalysis', () => {
+  describe('summarizeArguments', () => {
     let service;
 
     beforeEach(() => {
@@ -37,47 +37,56 @@ describe('LlmService', () => {
     });
 
     test('returns fallback message for empty rounds array', () => {
-      const result = service.basicFrequencyAnalysis([], 'A');
-      expect(result).toBe('_No round reports available for analysis._');
+      const result = service.summarizeArguments([], 'A');
+      expect(result).toContain('No round reports available');
     });
 
     test('returns fallback message when rounds have no report text', () => {
       const rounds = [{ tournament: 'Stanford', round: 'R1', report: '' }];
-      const result = service.basicFrequencyAnalysis(rounds, 'A');
-      expect(result).toBe('_No round reports available for analysis._');
+      const result = service.summarizeArguments(rounds, 'A');
+      expect(result).toContain('No round reports available');
     });
 
-    test('produces 1AC frequency analysis for aff side', () => {
+    test('extracts 1AC arguments for aff side', () => {
       const rounds = [
-        { tournament: 'Stanford', round: 'R1', report: '1AC: hegemony advantage with economy impact' },
-        { tournament: 'Berkeley', round: 'R2', report: '1AC: hegemony with prolif advantage' },
-        { tournament: 'Greenhill', round: 'R3', report: '1AC: warming advantage plan to reduce emissions' },
+        { tournament: 'Stanford', round: 'R1', report: '1ac PNT; 2nr PTX' },
+        { tournament: 'Berkeley', round: 'R2', report: '1ac PNT; 2nr putin' },
+        { tournament: 'Greenhill', round: 'R3', report: 'We ran sci dip; 2nr was sec K' },
       ];
-      const result = service.basicFrequencyAnalysis(rounds, 'A');
-      expect(result).toContain('**1AC Frequency Analysis**');
-      expect(result).toMatch(/• \*\*heg/);
-      expect(result).toContain('Most common');
+      const result = service.summarizeArguments(rounds, 'A');
+      expect(result).toContain('1AC - PNT (2 occurrences)');
+      expect(result).toContain('1AC - sci dip (1 occurrence)');
+      expect(result).toContain('Most Recent:');
     });
 
-    test('produces 2NR frequency analysis for neg side', () => {
+    test('extracts 2NR arguments for neg side', () => {
       const rounds = [
-        { tournament: 'Stanford', round: 'R1', report: '2NR: went for the politics DA' },
-        { tournament: 'Berkeley', round: 'R2', report: '2NR: collapsed to capitalism K' },
-        { tournament: 'Greenhill', round: 'R3', report: '2NR: went for politics disad and states cp' },
+        { tournament: 'Stanford', round: 'R1', report: '1ac DSM; 2nr WWF cp' },
+        { tournament: 'Berkeley', round: 'R2', report: '1ac PNT; 2nr was china soft' },
+        { tournament: 'TOC', round: 'R3', report: '1ac land trusts; 2nr was T' },
       ];
-      const result = service.basicFrequencyAnalysis(rounds, 'N');
-      expect(result).toContain('**2NR Frequency Analysis**');
-      expect(result).toMatch(/• \*\*politics/);
-      expect(result).toContain('Most common');
+      const result = service.summarizeArguments(rounds, 'N');
+      expect(result).toContain('2NR - WWF cp (1 occurrence)');
+      expect(result).toContain('2NR - china soft (1 occurrence)');
+      expect(result).toContain('2NR - T (1 occurrence)');
+      expect(result).toContain('Most Recent: T');
     });
 
-    test('detects topicality and framework keywords', () => {
+    test('handles "They ran" format', () => {
       const rounds = [
-        { tournament: 'TOC', round: 'R1', report: 'Neg ran topicality and framework against the aff' },
+        { tournament: 'TOC', round: 'R1', report: 'They ran native land trusts; 2nr was T' },
       ];
-      const result = service.basicFrequencyAnalysis(rounds, 'N');
-      expect(result).toContain('topicality');
-      expect(result).toContain('framework');
+      const result = service.summarizeArguments(rounds, 'N');
+      expect(result).toContain('2NR - T');
+    });
+
+    test('deduplicates same arguments (case-insensitive)', () => {
+      const rounds = [
+        { tournament: 'T1', round: 'R1', report: '1ac PNT' },
+        { tournament: 'T2', round: 'R2', report: '1ac pnt' },
+      ];
+      const result = service.summarizeArguments(rounds, 'A');
+      expect(result).toContain('2 occurrences');
     });
   });
 
@@ -111,16 +120,15 @@ describe('LlmService', () => {
   });
 
   describe('summarizeWithFallback', () => {
-    test('falls back to basicFrequencyAnalysis when no API key', async () => {
+    test('uses summarizeArguments (no LLM needed)', () => {
       const service = new LlmService();
-      expect(service.enabled).toBe(false);
 
       const rounds = [
-        { tournament: 'Stanford', round: 'R1', report: '1AC: hegemony advantage' },
+        { tournament: 'Stanford', round: 'R1', report: '1ac PNT; 2nr PTX' },
       ];
-      const result = await service.summarizeWithFallback(rounds, 'A');
-      expect(result).toContain('**1AC Frequency Analysis**');
-      expect(result).toMatch(/heg/);
+      const result = service.summarizeWithFallback(rounds, 'A');
+      expect(result).toContain('1AC - PNT');
+      expect(result).toContain('Most Recent');
     });
   });
 });

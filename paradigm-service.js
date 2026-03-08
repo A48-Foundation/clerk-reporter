@@ -115,6 +115,11 @@ class ParadigmService {
    * Returns an array of { name, judgePersonId, paradigmUrl }.
    */
   async searchJudge(firstName, lastName) {
+    // Ensure we're authenticated (Tabroom requires login for paradigm search)
+    if (!this.loggedIn) {
+      try { await this.login(); } catch (e) { console.warn('[ParadigmService] Login failed:', e.message); }
+    }
+
     const url = `${PARADIGM_SEARCH_URL}?search_first=${encodeURIComponent(firstName)}&search_last=${encodeURIComponent(lastName)}`;
 
     // Don't follow redirects automatically — a single result redirects to the paradigm page
