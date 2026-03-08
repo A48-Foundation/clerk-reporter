@@ -822,12 +822,12 @@ class ClerkKentBot {
       return;
     }
 
-    const { ourTeamCode, opponentCode, side, room, judges, roundTitle, roundNumber } = pairing;
+    const { ourTeamCode, opponentCode, side, room, judges, roundTitle, roundNumber, startTime } = pairing;
     const roundKey = (roundTitle || `Round ${roundNumber || '?'}`).replace(/\s+/g, '_').toLowerCase();
     const now = Date.now();
 
     if (!this._roundBatches[roundKey]) {
-      this._roundBatches[roundKey] = { rows: [], firstSeen: now, timer: null };
+      this._roundBatches[roundKey] = { rows: [], firstSeen: now, timer: null, startTime: startTime || null };
     }
 
     const batch = this._roundBatches[roundKey];
@@ -840,7 +840,6 @@ class ClerkKentBot {
       side: side || 'FLIP',
       opponent: opponentCode || 'TBD',
       room: room || '—',
-      args: '—',
       judges: judgeNames,
     });
 
@@ -888,7 +887,7 @@ class ClerkKentBot {
       const channel = await this.client.channels.fetch(this._allTeamChannelId);
       if (!channel) return;
 
-      const embed = this.reportBuilder.buildAllTeamEmbed(roundKey, batch.rows);
+      const embed = this.reportBuilder.buildAllTeamEmbed(roundKey, batch.rows, batch.startTime);
       await channel.send({ embeds: [embed] });
       console.log(`✅ Sent all-team report for ${roundKey} (${batch.rows.length} pairings)`);
     } catch (err) {

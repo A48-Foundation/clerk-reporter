@@ -116,25 +116,25 @@ class ReportBuilder {
    * Build a compact all-team summary embed for a round.
    * Each row: team (side) vs opponent | room | args | judge
    */
-  buildAllTeamEmbed(roundKey, rows) {
+  buildAllTeamEmbed(roundKey, rows, startTime) {
     // Convert round key back to display title
     let title = roundKey.replace(/_/g, ' ');
     const roundMatch = title.match(/round\s+(\d+)/i);
     if (roundMatch) title = `R${roundMatch[1]}`;
 
+    const timeStr = startTime ? ` — ${startTime}` : '';
+
     const lines = rows.map(r => {
       const watchTag = r.watched ? ' 👁️' : '';
       return `**${r.team}** (${r.side}) v. ${r.opponent}${watchTag}\n` +
-             `┗ 📍 ${r.room} │ ⚖️ ${r.judges}\n` +
-             `┗ 📄 ${r.args}`;
+             `┗ 📍 ${r.room} │ ⚖️ ${r.judges}`;
     });
 
     const description = lines.join('\n\n') || '_No pairings collected._';
-    // Discord embed description max is 4096
     const truncated = description.length > 4000 ? description.slice(0, 3997) + '...' : description;
 
     return new EmbedBuilder()
-      .setTitle(`📊 All-Team Report — ${title}`)
+      .setTitle(`📊 All-Team Report — ${title}${timeStr}`)
       .setDescription(truncated)
       .setColor(0x9b59b6)
       .setFooter({ text: `${rows.length} pairing(s)` });

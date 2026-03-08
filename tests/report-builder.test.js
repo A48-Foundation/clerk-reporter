@@ -246,26 +246,26 @@ describe('ReportBuilder', () => {
   describe('buildAllTeamEmbed', () => {
     test('builds compact all-team embed with multiple rows', () => {
       const rows = [
-        { team: 'Cuttlefish CG', side: 'AFF', opponent: 'Coppell PK', room: 'Room 5', args: '2NR - Politics (3)', judges: 'Smith' },
-        { team: 'Interlake OC', side: 'NEG', opponent: 'North Hollywood LZ', room: 'Room 8', args: '1AC - PNT (6)', judges: 'Jones, Lee' },
+        { team: 'Cuttlefish CG', side: 'AFF', opponent: 'Coppell PK', room: 'Room 5', judges: 'Smith' },
+        { team: 'Interlake OC', side: 'NEG', opponent: 'North Hollywood LZ', room: 'Room 8', judges: 'Jones, Lee' },
       ];
 
-      const embed = builder.buildAllTeamEmbed('round_4', rows);
+      const embed = builder.buildAllTeamEmbed('round_4', rows, '8:00 AM EST');
 
-      expect(embed.data.title).toBe('📊 All-Team Report — R4');
+      expect(embed.data.title).toBe('📊 All-Team Report — R4 — 8:00 AM EST');
       expect(embed.data.color).toBe(0x9b59b6);
       expect(embed.data.description).toContain('Cuttlefish CG');
       expect(embed.data.description).toContain('Interlake OC');
-      expect(embed.data.description).toContain('Politics');
-      expect(embed.data.description).toContain('PNT');
+      expect(embed.data.description).toContain('Room 5');
       expect(embed.data.description).toContain('Smith');
       expect(embed.data.description).toContain('Jones, Lee');
+      expect(embed.data.description).not.toContain('📄');
       expect(embed.data.footer.text).toBe('2 pairing(s)');
     });
 
     test('watched rows get eye emoji', () => {
       const rows = [
-        { team: 'Greenhill AB', side: 'AFF', opponent: 'Dulles CD', room: 'Room 1', args: '—', judges: 'Patel', watched: true },
+        { team: 'Greenhill AB', side: 'AFF', opponent: 'Dulles CD', room: 'Room 1', judges: 'Patel', watched: true },
       ];
 
       const embed = builder.buildAllTeamEmbed('round_1', rows);
@@ -283,12 +283,12 @@ describe('ReportBuilder', () => {
       expect(embed.data.title).toBe('📊 All-Team Report — R6');
     });
 
-    test('does not truncate long argument text', () => {
+    test('no start time omits time from title', () => {
       const rows = [
-        { team: 'A', side: 'AFF', opponent: 'B', room: 'R1', args: 'X'.repeat(100), judges: 'J' },
+        { team: 'A', side: 'AFF', opponent: 'B', room: 'R1', judges: 'J' },
       ];
       const embed = builder.buildAllTeamEmbed('round_1', rows);
-      expect(embed.data.description).toContain('X'.repeat(100));
+      expect(embed.data.title).toBe('📊 All-Team Report — R1');
     });
   });
 });
