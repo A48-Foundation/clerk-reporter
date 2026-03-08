@@ -113,12 +113,13 @@ class LlmService {
       '• K stance — good/bad for kritiks? Will they vote on framework?',
       '• T stance — how do they evaluate topicality? Good for T vs critical affs?',
       '• CP/DA — any strong preferences on counterplans or disadvantages?',
+      '• Theory — if they say specific args are bad/good (e.g. consult/conditioning/delay CPs, international fiat, 50 state fiat, condo), state exactly which and their opinion. If they say reject-the-arg-not-the-team or reject-the-team, state it.',
       '• Speed — do they dislike speed or have a cap?',
       '• Experience — years judging, coaching background, debate style they competed in',
       '• Non-policy background — if they did LD, PF, parli, speech, or another activity instead of policy, state it',
       '• Speaker points — if they mention a speaker point range, scale, or criteria, state it',
       '• Strong indicators — any auto-rejects, hard preferences, or dealbreakers',
-      'Skip any category with no clear signal. Max 8 bullets. Format: "• Topic: detail"',
+      'Skip any category with no clear signal. Max 10 bullets. Format: "• Topic: detail"',
     ].join('\n');
 
     try {
