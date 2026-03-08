@@ -117,6 +117,7 @@ describe('addTeam', () => {
         },
       },
       activeSession: null,
+      settings: { ourAff: 'PNT' },
     });
   });
 });

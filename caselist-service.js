@@ -214,6 +214,89 @@ class CaselistService {
   }
 
   /**
+   * Build a download URL for an open source document.
+   * @param {string} opensourcePath - e.g. "hspolicy25/NorthHollywood/LeZh/NorthHollywood-LeZh-Aff-...-Round-1.docx"
+   * @returns {string}
+   */
+  getDownloadUrl(opensourcePath) {
+    return `https://api.opencaselist.com/v1/download?path=${encodeURIComponent(opensourcePath)}`;
+  }
+
+  /**
+   * Find the most recent aff round with an open source document.
+   * @param {Array} rounds - aff rounds from getTeamRounds
+   * @returns {{ round, tournament, report, opensource, downloadUrl } | null}
+   */
+  getLatestAffDoc(rounds) {
+    const withDocs = rounds.filter(r => r.opensource);
+    if (withDocs.length === 0) return null;
+    const latest = withDocs[withDocs.length - 1];
+    return {
+      round: latest.round,
+      tournament: latest.tournament,
+      report: latest.report,
+      opensource: latest.opensource,
+      downloadUrl: this.getDownloadUrl(latest.opensource),
+    };
+  }
+
+  /**
+   * Find the most recent neg round where the 1AC matches a given aff name.
+   * Uses fuzzy matching on the report text.
+   *
+   * @param {Array} rounds - neg rounds from getTeamRounds
+   * @param {string} affName - e.g. "PNT", "Science Diplomacy", "sci dip"
+   * @returns {{ round, tournament, report, strategy, opensource, downloadUrl } | null}
+   */
+  getNegVsAff(rounds, affName) {
+    if (!affName || rounds.length === 0) return null;
+
+    const affLower = affName.toLowerCase();
+    // Build fuzzy variants: "science diplomacy" → also match "sci dip"
+    const affWords = affLower.split(/\s+/);
+    const affAbbrev = affWords.map(w => w.slice(0, 3)).join(' ');
+
+    const matches = rounds.filter(r => {
+      if (!r.report) return false;
+      const report = r.report.toLowerCase();
+      // Direct match
+      if (report.includes(affLower)) return true;
+      // Abbreviation match (e.g. "pnt" matches "pnt")
+      if (report.includes(affAbbrev)) return true;
+      // Check if 1ac field mentions it
+      const acMatch = report.match(/1ac\s+(?:was\s+)?(.+?)(?:\s*[;,]|$)/i);
+      if (acMatch) {
+        const acText = acMatch[1].toLowerCase().trim();
+        if (acText.includes(affLower) || affLower.includes(acText)) return true;
+        if (acText.includes(affAbbrev) || affAbbrev.includes(acText)) return true;
+      }
+      // "They ran X" pattern
+      const ranMatch = report.match(/(?:they\s+)?ran\s+(.+?)(?:\s*[;,]|$)/i);
+      if (ranMatch) {
+        const ranText = ranMatch[1].toLowerCase().trim();
+        if (ranText.includes(affLower) || affLower.includes(ranText)) return true;
+      }
+      return false;
+    });
+
+    if (matches.length === 0) return null;
+
+    const latest = matches[matches.length - 1];
+    // Extract the 2NR strategy
+    const stratMatch = latest.report.match(/2nr\s+(?:was\s+)?(.+?)(?:\s*[;,.]|$)/i);
+    const strategy = stratMatch ? stratMatch[1].trim() : null;
+
+    return {
+      round: latest.round,
+      tournament: latest.tournament,
+      report: latest.report,
+      strategy,
+      opensource: latest.opensource || null,
+      downloadUrl: latest.opensource ? this.getDownloadUrl(latest.opensource) : null,
+    };
+  }
+
+  /**
    * Main entry point — resolve an opponent's caselist data.
    *
    * Uses the Tabroom entry names (e.g. "Levine & Zhang") to find the correct

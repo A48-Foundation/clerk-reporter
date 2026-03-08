@@ -109,6 +109,18 @@ class ClerkKentBot {
       return;
     }
 
+    // Set our aff name: "our aff is PNT" or "our aff is Science Diplomacy"
+    if (/^our\s+aff\s+is\s+/i.test(lowerContent)) {
+      const affName = content.replace(/^our\s+aff\s+is\s+/i, '').trim();
+      if (affName) {
+        this.store.setOurAff(affName);
+        await message.reply(`✅ Our aff set to **${affName}**. This persists across sessions.`);
+      } else {
+        await message.reply(`ℹ️ Current aff: **${this.store.getOurAff()}**\nUsage: \`@Clerk Kent our aff is [name]\``);
+      }
+      return;
+    }
+
     // Channel override while a pending session exists (e.g. "CG=#helpful-things")
     if (this._pendingSession && /\w+=/.test(content)) {
       await this._handleChannelOverride(message, content);
@@ -567,7 +579,6 @@ class ClerkKentBot {
     let opponentData = null;
     let argumentSummary = '_No caselist data found._';
     if (opponentCode) {
-      // Get the opponent's entry names from the stored entries (e.g. "Levine & Zhang")
       const opponentEntryNames = this.store.getEntryNamesForTeam(opponentCode);
       if (opponentEntryNames) {
         console.log(`[Pairing] Opponent ${opponentCode} entry names: "${opponentEntryNames}"`);
@@ -577,13 +588,28 @@ class ClerkKentBot {
         ? await this.caselistService.lookupOpponent(opponentCode, opponentSide, opponentEntryNames)
         : null;
       if (caselistResult && caselistResult.rounds.length > 0) {
-        argumentSummary = await this.llmService.summarizeWithFallback(caselistResult.rounds, opponentSide);
+        argumentSummary = this.llmService.summarizeWithFallback(caselistResult.rounds, opponentSide);
+
+        let docInfo = null;
+        if (opponentSide === 'A') {
+          // Opponent is AFF → find their most recent aff open source
+          docInfo = this.caselistService.getLatestAffDoc(caselistResult.rounds);
+        } else if (opponentSide === 'N') {
+          // Opponent is NEG → find their most recent neg vs our aff
+          const ourAff = this.store.getOurAff();
+          docInfo = this.caselistService.getNegVsAff(caselistResult.rounds, ourAff);
+          if (docInfo) {
+            console.log(`[Pairing] Found neg vs ${ourAff}: R${docInfo.round} ${docInfo.tournament} — 2NR: ${docInfo.strategy}`);
+          }
+        }
+
         opponentData = {
           schoolName: caselistResult.schoolName,
           teamCode: caselistResult.teamCode,
           caselistUrl: caselistResult.caselistUrl,
           side: opponentSide === 'A' ? 'Aff' : 'Neg',
           argumentSummary,
+          docInfo,
         };
       } else {
         opponentData = {
@@ -592,6 +618,7 @@ class ClerkKentBot {
           caselistUrl: null,
           side: opponentSide ? (opponentSide === 'A' ? 'Aff' : 'Neg') : 'FLIP',
           argumentSummary: opponentSide ? argumentSummary : '_Side unknown (FLIP) — caselist lookup skipped._',
+          docInfo: null,
         };
       }
     }

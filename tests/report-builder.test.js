@@ -165,6 +165,66 @@ describe('ReportBuilder', () => {
       expect(fieldMap['Caselist'].value).toBe('Not found');
       expect(fieldMap['Argument Summary'].value).toBe('Not found');
     });
+
+    test('aff opponent with docInfo shows open source link', () => {
+      const opponent = {
+        schoolName: 'Coppell',
+        teamCode: 'PK',
+        caselistUrl: 'https://opencaselist.com/hspolicy25/Coppell/CoPk',
+        side: 'Aff',
+        argumentSummary: '1AC - PNT (3 occurrences)',
+        docInfo: {
+          round: '4',
+          tournament: 'Stanford',
+          downloadUrl: 'https://api.opencaselist.com/v1/download?path=xyz',
+        },
+      };
+      const embed = builder.buildOpponentEmbed(opponent);
+      const fieldMap = Object.fromEntries(
+        embed.data.fields.map((f) => [f.name, f]),
+      );
+      expect(fieldMap['📄 Most Recent Aff Open Source']).toBeDefined();
+      expect(fieldMap['📄 Most Recent Aff Open Source'].value).toContain('Download');
+      expect(fieldMap['📄 Most Recent Aff Open Source'].value).toContain('Stanford R4');
+    });
+
+    test('neg opponent with docInfo shows neg vs our aff', () => {
+      const opponent = {
+        schoolName: 'Coppell',
+        teamCode: 'PK',
+        caselistUrl: 'https://opencaselist.com/hspolicy25/Coppell/CoPk',
+        side: 'Neg',
+        argumentSummary: '2NR - Politics (2 occurrences)',
+        docInfo: {
+          round: '3',
+          tournament: 'Berkeley',
+          strategy: 'Politics DA + States CP',
+          downloadUrl: null,
+        },
+      };
+      const embed = builder.buildOpponentEmbed(opponent);
+      const fieldMap = Object.fromEntries(
+        embed.data.fields.map((f) => [f.name, f]),
+      );
+      expect(fieldMap['📄 Most Recent Neg vs Our Aff']).toBeDefined();
+      expect(fieldMap['📄 Most Recent Neg vs Our Aff'].value).toContain('Berkeley R3');
+      expect(fieldMap['📄 Most Recent Neg vs Our Aff'].value).toContain('Politics DA + States CP');
+      expect(fieldMap['📄 Most Recent Neg vs Our Aff'].value).toContain('no open source');
+    });
+
+    test('no docInfo does not add doc field', () => {
+      const opponent = {
+        schoolName: 'Coppell',
+        teamCode: 'PK',
+        side: 'Aff',
+        argumentSummary: 'N/A',
+        docInfo: null,
+      };
+      const embed = builder.buildOpponentEmbed(opponent);
+      const fieldNames = embed.data.fields.map(f => f.name);
+      expect(fieldNames).not.toContain('📄 Most Recent Aff Open Source');
+      expect(fieldNames).not.toContain('📄 Most Recent Neg vs Our Aff');
+    });
   });
 
   // ── buildJudgeEmbed ────────────────────────────────────────────────

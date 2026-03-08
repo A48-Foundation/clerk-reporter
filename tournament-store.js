@@ -19,28 +19,40 @@ class TournamentStore {
     const data = this.load();
     this.tournaments = data.tournaments;
     this.activeSession = data.activeSession;
+    this.settings = data.settings;
   }
 
   load() {
     try {
       if (fs.existsSync(DATA_FILE)) {
         const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-        // New format: { tournaments: {...}, activeSession: {...} }
         if (raw.tournaments && typeof raw.tournaments === 'object' && !Array.isArray(raw.tournaments)) {
-          return { tournaments: raw.tournaments, activeSession: raw.activeSession || null };
+          return {
+            tournaments: raw.tournaments,
+            activeSession: raw.activeSession || null,
+            settings: raw.settings || { ourAff: 'PNT' },
+          };
         }
-        // Legacy format: tournaments stored at root level
-        return { tournaments: raw, activeSession: null };
+        return { tournaments: raw, activeSession: null, settings: { ourAff: 'PNT' } };
       }
     } catch (err) {
       console.error('Failed to load tournaments.json:', err.message);
     }
-    return { tournaments: {}, activeSession: null };
+    return { tournaments: {}, activeSession: null, settings: { ourAff: 'PNT' } };
   }
 
   save() {
-    const data = { tournaments: this.tournaments, activeSession: this.activeSession };
+    const data = { tournaments: this.tournaments, activeSession: this.activeSession, settings: this.settings };
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  }
+
+  getOurAff() {
+    return this.settings.ourAff || 'PNT';
+  }
+
+  setOurAff(affName) {
+    this.settings.ourAff = affName;
+    this.save();
   }
 
   /**
