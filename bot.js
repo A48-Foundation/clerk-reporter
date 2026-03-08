@@ -113,7 +113,7 @@ class ClerkKentBot {
       return;
     }
 
-    if (lowerContent === 'stop pairings') {
+    if (lowerContent === 'stop pairings' || lowerContent === 'cancel') {
       await this.handleStopPairings(message);
       return;
     }
@@ -476,12 +476,18 @@ class ClerkKentBot {
    * Stops the email monitor and clears the active session.
    */
   async handleStopPairings(message) {
+    if (this._pendingSession) {
+      this._pendingSession = null;
+    }
     if (this.emailMonitor) {
       this.emailMonitor.stop();
       this.emailMonitor = null;
     }
     this.store.clearActiveSession();
-    await message.reply('✅ Pairings pipeline stopped. Email monitor deactivated and session cleared.');
+    this._allTeamChannelId = null;
+    this._watchFilters = [];
+    this._roundBatches = {};
+    await message.reply('✅ Pairings pipeline stopped and session cleared.');
   }
 
   /**
