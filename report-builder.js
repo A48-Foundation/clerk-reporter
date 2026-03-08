@@ -39,7 +39,7 @@ class ReportBuilder {
     } = opponentData || {};
 
     return new EmbedBuilder()
-      .setTitle(`🔍 Opponent: ${schoolName} ${teamCode}`)
+      .setTitle(`🐟 Opponent: ${schoolName} ${teamCode}`)
       .setColor(0xe74c3c)
       .addFields(
         { name: 'Side', value: side || 'N/A', inline: true },

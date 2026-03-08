@@ -116,7 +116,7 @@ describe('ReportBuilder', () => {
 
       const embed = builder.buildOpponentEmbed(opponent);
 
-      expect(embed.data.title).toBe('🔍 Opponent: Coppell PK');
+      expect(embed.data.title).toBe('🐟 Opponent: Coppell PK');
       expect(embed.data.color).toBe(0xe74c3c);
 
       const fieldMap = Object.fromEntries(
@@ -156,7 +156,7 @@ describe('ReportBuilder', () => {
     test('null input produces sensible defaults', () => {
       const embed = builder.buildOpponentEmbed(null);
 
-      expect(embed.data.title).toBe('🔍 Opponent: Unknown N/A');
+      expect(embed.data.title).toBe('🐟 Opponent: Unknown N/A');
 
       const fieldMap = Object.fromEntries(
         embed.data.fields.map((f) => [f.name, f]),
@@ -298,7 +298,7 @@ describe('ReportBuilder', () => {
 
       expect(embeds).toHaveLength(4);
       expect(embeds[0].data.title).toBe('📋 Round 1');
-      expect(embeds[1].data.title).toBe('🔍 Opponent: School B B1');
+      expect(embeds[1].data.title).toBe('🐟 Opponent: School B B1');
       expect(embeds[2].data.title).toBe('⚖️ Judge Alpha');
       expect(embeds[3].data.title).toBe('⚖️ Judge Beta');
     });
@@ -334,7 +334,7 @@ describe('ReportBuilder', () => {
       // 1 pairing + 1 opponent + 8 judges = 10
       expect(embeds).toHaveLength(10);
       expect(embeds[0].data.title).toBe('📋 Round 3');
-      expect(embeds[1].data.title).toBe('🔍 Opponent: School X XX');
+      expect(embeds[1].data.title).toBe('🐟 Opponent: School X XX');
       // Last included judge should be Judge 8
       expect(embeds[9].data.title).toBe('⚖️ Judge 8');
     });
