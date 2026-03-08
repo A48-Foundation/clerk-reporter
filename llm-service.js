@@ -1,4 +1,5 @@
 const OpenAI = require('openai');
+const ParadigmSummarizer = require('./paradigm-summarizer');
 
 class LlmService {
   constructor() {
@@ -6,10 +7,12 @@ class LlmService {
     if (apiKey) {
       this.client = new OpenAI({ apiKey });
       this.enabled = true;
+      this.paradigmSummarizer = new ParadigmSummarizer(apiKey);
     } else {
       console.warn('[LlmService] No OPENAI_API_KEY found — falling back to non-LLM summaries.');
       this.client = null;
       this.enabled = false;
+      this.paradigmSummarizer = null;
     }
     this.model = 'gpt-4o-mini';
   }
@@ -149,51 +152,15 @@ class LlmService {
 
   /**
    * Summarize a judge paradigm from Tabroom.
+   * Delegates to the standalone ParadigmSummarizer module.
    * @param {string} philosophyText - Full paradigm text
-   * @returns {Promise<string>} 3-5 sentence summary
+   * @returns {Promise<string>} Bullet-point summary
    */
   async summarizeParadigm(philosophyText) {
-    if (!this.enabled) {
-      return this._truncateParadigm(philosophyText);
+    if (this.paradigmSummarizer) {
+      return this.paradigmSummarizer.summarize(philosophyText);
     }
-
-    if (!philosophyText || !philosophyText.trim()) {
-      return '_No paradigm text available._';
-    }
-
-    const systemPrompt = [
-      'Summarize this judge paradigm as concise bullet points. No transition words, no filler.',
-      'Only include bullets that the paradigm clearly supports. Use this checklist:',
-      '• Neg Ks — good/bad for kritiks on the neg? Will they vote on the alt? Framework preferences?',
-      '• T v K Affs — stance on topicality/framework against critical/non-traditional affs? Do they think affs must defend the resolution/a plan? Topical version of the aff opinions go here.',
-      '• T v Policy — how do they evaluate topicality against policy affs? Appeals to limits, precision, etc.',
-      '• CPs — preferences on counterplans? Types they like/dislike? Conditionality views?',
-      '• DAs — any preferences on disadvantages? Link quality, uniqueness, turns case?',
-      '• Theory — if they say specific args are bad/good (e.g. consult/conditioning/delay CPs, international fiat, 50 state fiat, condo), state exactly which and their opinion. If they say reject-the-arg-not-the-team or reject-the-team, state it.',
-      '• Speed — do they dislike speed or have a cap?',
-      '• Experience — years judging, coaching background, debate style they competed in',
-      '• Non-policy background — if they did LD, PF, parli, speech, or another activity instead of policy, state it',
-      '• Speaker points — if they mention a speaker point range, scale, or criteria, state it',
-      '• Strong indicators — any auto-rejects, hard preferences, or dealbreakers',
-      'Skip any category with no clear signal. Max 11 bullets. Format: "• Topic: detail"',
-    ].join('\n');
-
-    try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: philosophyText },
-        ],
-        temperature: 0.15,
-        max_tokens: 250,
-      });
-
-      return response.choices[0]?.message?.content?.trim() || this._truncateParadigm(philosophyText);
-    } catch (err) {
-      console.error(`[LlmService] summarizeParadigm failed: ${err.message}`);
-      return this._truncateParadigm(philosophyText);
-    }
+    return this._truncateParadigm(philosophyText);
   }
 
   /**

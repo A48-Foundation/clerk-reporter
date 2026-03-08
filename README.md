@@ -154,17 +154,18 @@ Non-pairing emails (check-in notices, registration reminders, payment info) are 
 ```
 index.js                  Entry point — env validation, bot startup
   └─ bot.js               Discord command handler + pairings pipeline orchestrator
-       ├─ email-monitor.js     Gmail IMAP poller → emits 'pairing' events
-       ├─ email-parser.js      Parses email subject/body → structured pairing data
-       ├─ caselist-service.js   OpenCaselist API client (auth, school/team lookup, rounds)
-       ├─ paradigm-service.js   Tabroom paradigm scraper (cheerio-based)
-       ├─ llm-service.js        Argument frequency analysis + LLM paradigm bullet summaries
-       ├─ channel-mapper.js     Team code → Discord channel auto-mapping
-       ├─ report-builder.js     Builds Discord embed arrays
-       ├─ tournament-store.js   JSON file persistence for sessions + tracking
-       ├─ notion-service.js     Notion API — judge search with Fuse.js fuzzy matching
-       ├─ tabroom-scraper.js    Scrapes Tabroom pairings HTML pages
-       └─ pairings-poller.js    Legacy polling-based round checker
+       ├─ email-monitor.js       Gmail IMAP poller → emits 'pairing' events
+       ├─ email-parser.js        Parses email subject/body → structured pairing data
+       ├─ caselist-service.js    OpenCaselist API client (auth, school/team lookup, rounds)
+       ├─ paradigm-service.js    Tabroom paradigm scraper (cheerio-based)
+       ├─ paradigm-summarizer.js ★ Standalone LLM paradigm summarizer (reusable)
+       ├─ llm-service.js         Argument frequency analysis + delegates to paradigm-summarizer
+       ├─ channel-mapper.js      Team code → Discord channel auto-mapping
+       ├─ report-builder.js      Builds Discord embed arrays
+       ├─ tournament-store.js    JSON file persistence for sessions + tracking
+       ├─ notion-service.js      Notion API — judge search with Fuse.js fuzzy matching
+       ├─ tabroom-scraper.js     Scrapes Tabroom pairings HTML pages
+       └─ pairings-poller.js     Legacy polling-based round checker
 ```
 
 ### Data Flow
@@ -342,3 +343,55 @@ Test fixtures live in `tests/fixtures/emails.js` — real email samples with pre
 - Stores to `tournaments.json` with format: `{ tournaments: {...}, activeSession: {...}, settings: {...} }`
 - Tracks processed email UIDs to prevent duplicate reports
 - `settings.ourAff` persists the team's current aff name across sessions (default: "PNT")
+
+---
+
+### Standalone: Paradigm Summarizer
+
+`paradigm-summarizer.js` is a self-contained module you can use independently in other projects. It takes raw Tabroom paradigm text and returns concise bullet points via OpenAI.
+
+#### Usage
+
+```js
+const ParadigmSummarizer = require('./paradigm-summarizer');
+
+const summarizer = new ParadigmSummarizer(process.env.OPENAI_API_KEY, {
+  model: 'gpt-4o-mini',   // optional, default
+  temperature: 0.15,       // optional, default
+  maxTokens: 250,          // optional, default
+});
+
+const bullets = await summarizer.summarize(paradigmText);
+console.log(bullets);
+```
+
+#### With Paradigm Service (fetch + summarize)
+
+```js
+const ParadigmService = require('./paradigm-service');
+const ParadigmSummarizer = require('./paradigm-summarizer');
+
+const ps = new ParadigmService();
+const summarizer = new ParadigmSummarizer(process.env.OPENAI_API_KEY);
+
+const judge = await ps.fetchParadigmByName('Miriam Mokhemar');
+const summary = await summarizer.summarize(judge.philosophy);
+```
+
+#### Output Categories
+
+The summarizer extracts bullets for (when present in the paradigm):
+
+| Category | What it covers |
+|----------|---------------|
+| Neg Ks | Good/bad for kritiks on neg, alt voting, framework |
+| T v K Affs | Topicality/framework vs critical affs, topical version of aff |
+| T v Policy | Topicality vs policy affs, limits, precision |
+| CPs | Counterplan preferences, conditionality |
+| DAs | Disadvantage preferences, link quality |
+| Theory | Specific bad/good args (consult CPs, intl fiat, etc.), reject arg/team |
+| Speed | Speed tolerance, clarity preferences |
+| Experience | Judging/coaching/competing background |
+| Non-policy | LD, PF, parli, speech background |
+| Speaker points | Point range, scale, criteria |
+| Strong indicators | Auto-rejects, dealbreakers |
