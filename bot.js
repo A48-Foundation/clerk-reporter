@@ -55,6 +55,15 @@ class ClerkKentBot {
    * Handle incoming messages. Responds when the bot is mentioned.
    */
   async handleMessage(message) {
+    // Channel override — no mention needed, just a message in the same channel
+    if (this._pendingSession && !message.mentions.has(this.client.user)) {
+      const text = message.content.trim();
+      if (/\w+=/.test(text)) {
+        await this._handleChannelOverride(message, text);
+        return;
+      }
+    }
+
     // Check if the bot is mentioned
     if (!message.mentions.has(this.client.user)) return;
 
@@ -118,12 +127,6 @@ class ClerkKentBot {
       } else {
         await message.reply(`ℹ️ Current aff: **${this.store.getOurAff()}**\nUsage: \`@Clerk Kent our aff is [name]\``);
       }
-      return;
-    }
-
-    // Channel override while a pending session exists (e.g. "CG=#helpful-things")
-    if (this._pendingSession && /\w+=/.test(content)) {
-      await this._handleChannelOverride(message, content);
       return;
     }
 
