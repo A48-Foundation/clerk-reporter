@@ -64,7 +64,7 @@ describe('ReportBuilder', () => {
       const oppField = embed.data.fields.find(f => f.name.includes('🐟'));
       expect(oppField).toBeDefined();
       expect(oppField.name).toContain('AFF v. Coppell PK (Neg)');
-      expect(oppField.value).toContain('[Wiki]');
+      expect(oppField.value).toContain('[Coppell PK]');
       expect(oppField.value).toContain('2NR - Politics (3)');
     });
 

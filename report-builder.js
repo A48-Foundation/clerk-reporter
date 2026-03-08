@@ -40,10 +40,10 @@ class ReportBuilder {
     ];
 
     if (argumentSummary) {
-      const oppLink = caselistUrl ? `[${opponentName}](${caselistUrl})` : opponentName;
+      const oppDisplay = caselistUrl ? `[${opponentName}](${caselistUrl})` : opponentName;
       fields.push({
         name: `🐟 ${ourSide} v. ${opponentName} (${opponentSide})`,
-        value: (caselistUrl ? `[Wiki](${caselistUrl})\n` : '') + argumentSummary,
+        value: `${oppDisplay}\n${argumentSummary}`,
         inline: false,
       });
     }
