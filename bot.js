@@ -639,7 +639,7 @@ class ClerkKentBot {
           else if (entry.side === 'NEG') opponentSide = 'A';
           // FLIP = unknown, we'll skip caselist side filtering
 
-          await this._processSinglePairing({
+          const pairingData = {
             ourTeamCode: entry.teamCode,
             opponentCode: entry.opponent,
             opponentSide,
@@ -649,7 +649,11 @@ class ClerkKentBot {
             roundTitle: parsed.roundTitle,
             startTime: parsed.startTime,
             roundNumber: null,
-          }, session);
+          };
+
+          // Add to all-team batch immediately (before slow lookups)
+          this._addToRoundBatchEarly(pairingData);
+          await this._processSinglePairing(pairingData, session);
         }
       } else {
         // Format A: single live update pairing
@@ -675,7 +679,7 @@ class ClerkKentBot {
           return;
         }
 
-        await this._processSinglePairing({
+        const pairingData = {
           ourTeamCode,
           opponentCode,
           opponentSide,
@@ -687,7 +691,11 @@ class ClerkKentBot {
           roundNumber: parsed.roundNumber,
           aff: parsed.aff,
           neg: parsed.neg,
-        }, session);
+        };
+
+        // Add to all-team batch immediately (before slow lookups)
+        this._addToRoundBatchEarly(pairingData);
+        await this._processSinglePairing(pairingData, session);
       }
     } catch (err) {
       console.error('[handlePairingEvent] Error:', err);
@@ -800,18 +808,15 @@ class ClerkKentBot {
       await channel.send({ embeds: embeds.slice(0, 10) });
       console.log(`✅ Sent pairings report for ${ourTeamCode} (${roundTitle || 'Round ' + (roundNumber || '?')})`);
     }
-
-    // Collect row for the all-team report
-    this._addToRoundBatch(pairing, opponentData, judgeEmbedData);
   }
 
   // ─── ALL-TEAM ROUND REPORT ─────────────────────────────────────
 
   /**
-   * Add a pairing row to the current round batch.
-   * Pairings for the same round within 10 minutes are grouped together.
+   * Add a pairing row to the round batch immediately from parsed email data.
+   * Uses only data available at parse time (no caselist/paradigm lookups needed).
    */
-  _addToRoundBatch(pairing, opponentData, judgeEmbedData) {
+  _addToRoundBatchEarly(pairing) {
     if (!this._allTeamChannelId) {
       console.log('[AllTeamReport] Skipped — no all-team channel set');
       return;
@@ -826,28 +831,20 @@ class ClerkKentBot {
     }
 
     const batch = this._roundBatches[roundKey];
-
-    // Extract compact argument summary (just the argument names, no links)
-    let argBrief = '—';
-    if (opponentData?.argumentSummary && opponentData.argumentSummary !== '_No caselist data found._') {
-      const argLines = opponentData.argumentSummary.split('\n')
-        .filter(l => l.startsWith('1AC') || l.startsWith('2NR'))
-        .map(l => l.replace(/\s*-\s*\[Docs\]\([^)]*\)/g, '').trim());
-      if (argLines.length > 0) argBrief = argLines.join(', ');
-    }
-
-    const judgeNames = judgeEmbedData.map(j => j.name).join(', ') || '—';
+    const judgeNames = (judges || [])
+      .filter(j => j.name && j.name.length >= 3 && !/^-+$/.test(j.name))
+      .map(j => j.name).join(', ') || '—';
 
     batch.rows.push({
       team: ourTeamCode,
       side: side || 'FLIP',
-      opponent: opponentData?.teamCode
-        ? `${opponentData.schoolName || ''} ${opponentData.teamCode}`.trim()
-        : (opponentCode || 'TBD'),
+      opponent: opponentCode || 'TBD',
       room: room || '—',
-      args: argBrief,
+      args: '—',
       judges: judgeNames,
     });
+
+    console.log(`[AllTeamReport] Added ${ourTeamCode} to batch ${roundKey} (${batch.rows.length} rows)`);
 
     // Reset the flush timer — flush 30s after the last pairing arrives
     if (batch.timer) clearTimeout(batch.timer);
