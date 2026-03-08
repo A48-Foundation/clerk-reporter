@@ -75,7 +75,8 @@ class ClerkKentBot {
         }
         if (channelId) {
           this._allTeamChannelId = channelId;
-          await message.reply(`✅ All-team report → <#${channelId}>`);
+          await this._updateSetupMessage();
+          try { await message.delete(); } catch {}
         } else {
           await message.reply(`⚠️ Channel **${chName}** not found.`);
         }
@@ -263,9 +264,8 @@ class ClerkKentBot {
         .setTitle(`📋 ${result.tournamentName} — Channel Mapping`)
         .setDescription(
           lines.join('\n') + '\n\n' +
-          'Click **Confirm** to start monitoring, or type overrides like `OC=#some-channel`.\n' +
-          '📊 **All-team report:** Type `all-team=#channel-name` to set a channel for round summaries.\n' +
-          '👁️ **Watch:** `@Clerk Kent watch team <name>` or `watch judge <name>` to add non-team pairings.'
+          '📊 All-team report: type `all-team=#channel-name` to set\n\n' +
+          'Type overrides like `OC=#some-channel` or click **Confirm & Start** when ready.'
         )
         .setColor(0x5865f2);
 
@@ -280,7 +280,7 @@ class ClerkKentBot {
           .setStyle(ButtonStyle.Secondary),
       );
 
-      await message.reply({ embeds: [embed], components: [row] });
+      const setupMessage = await message.reply({ embeds: [embed], components: [row] });
 
       // Store pending session for the button handler + override handler
       // allEntries stores all teams from the tournament for opponent name lookups
@@ -292,11 +292,56 @@ class ClerkKentBot {
         allEntries: result.entries,
         channelId: message.channel.id,
         userId: message.author.id,
+        setupMessage,
       };
 
     } catch (err) {
       console.error('Error in initiate pairings command:', err);
       await message.reply('⚠️ Something went wrong while setting up pairings. Check the URL and try again.');
+    }
+  }
+
+  /**
+   * Rebuild the setup embed from current pending session state and edit the original message.
+   */
+  async _updateSetupMessage() {
+    const session = this._pendingSession;
+    if (!session?.setupMessage) return;
+
+    const lines = Object.entries(session.mapping).map(([team, info]) => {
+      if (info.confidence === 'manual') return `🔧 **${team}** → #${info.channelName}`;
+      if (info.confidence === 'auto') return `✅ **${team}** → #${info.channelName}`;
+      return `❌ **${team}** → _unmatched_`;
+    });
+
+    const allTeamLine = this._allTeamChannelId
+      ? `📊 All-team report → <#${this._allTeamChannelId}>`
+      : '📊 All-team report: type `all-team=#channel-name` to set';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`📋 ${session.tournamentName} — Channel Mapping`)
+      .setDescription(
+        lines.join('\n') + '\n\n' +
+        allTeamLine + '\n\n' +
+        'Type overrides like `OC=#some-channel` or click **Confirm & Start** when ready.'
+      )
+      .setColor(0x5865f2);
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('pairings_confirm')
+        .setLabel('✅ Confirm & Start')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('pairings_cancel')
+        .setLabel('Cancel')
+        .setStyle(ButtonStyle.Secondary),
+    );
+
+    try {
+      await session.setupMessage.edit({ embeds: [embed], components: [row] });
+    } catch (err) {
+      console.error('[Setup] Failed to edit setup message:', err.message);
     }
   }
 
@@ -346,18 +391,11 @@ class ClerkKentBot {
       }
     }
 
-    if (results.length > 0) {
-      // Show updated mapping
-      const allLines = Object.entries(this._pendingSession.mapping).map(([team, info]) => {
-        if (info.confidence === 'manual') return `🔧 **${team}** → #${info.channelName}`;
-        if (info.confidence === 'auto') return `✅ **${team}** → #${info.channelName}`;
-        return `❌ **${team}** → _unmatched_`;
-      });
-
-      await message.reply(
-        results.join('\n') + '\n\n**Updated mapping:**\n' + allLines.join('\n') +
-        '\n\nClick **Confirm & Start** when ready.'
-      );
+    if (results.length > 0 && anyApplied) {
+      await this._updateSetupMessage();
+      try { await message.delete(); } catch {}
+    } else if (results.length > 0) {
+      await message.reply(results.join('\n'));
     } else {
       await message.reply('⚠️ Could not parse any overrides. Use format: `CG=#channel-name`');
     }
