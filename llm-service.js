@@ -111,16 +111,17 @@ class LlmService {
       'Summarize this judge paradigm as concise bullet points. No transition words, no filler.',
       'Only include bullets that the paradigm clearly supports. Use this checklist:',
       '• Neg Ks — good/bad for kritiks on the neg? Will they vote on the alt? Framework preferences?',
-      '• K affs & T — stance on critical/non-traditional affs AND topicality vs K affs. Combine into one bullet. Do they think affs should defend the resolution/a plan? Will they vote on framework/T against K affs?',
-      '• T stance — how do they evaluate topicality in general (not vs K affs)?',
-      '• CP/DA — any strong preferences on counterplans or disadvantages?',
+      '• T v K Affs — stance on topicality/framework against critical/non-traditional affs? Do they think affs must defend the resolution/a plan? Topical version of the aff opinions go here.',
+      '• T v Policy — how do they evaluate topicality against policy affs? Appeals to limits, precision, etc.',
+      '• CPs — preferences on counterplans? Types they like/dislike? Conditionality views?',
+      '• DAs — any preferences on disadvantages? Link quality, uniqueness, turns case?',
       '• Theory — if they say specific args are bad/good (e.g. consult/conditioning/delay CPs, international fiat, 50 state fiat, condo), state exactly which and their opinion. If they say reject-the-arg-not-the-team or reject-the-team, state it.',
       '• Speed — do they dislike speed or have a cap?',
       '• Experience — years judging, coaching background, debate style they competed in',
       '• Non-policy background — if they did LD, PF, parli, speech, or another activity instead of policy, state it',
       '• Speaker points — if they mention a speaker point range, scale, or criteria, state it',
       '• Strong indicators — any auto-rejects, hard preferences, or dealbreakers',
-      'Skip any category with no clear signal. Max 10 bullets. Format: "• Topic: detail"',
+      'Skip any category with no clear signal. Max 11 bullets. Format: "• Topic: detail"',
     ].join('\n');
 
     try {
