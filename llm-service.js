@@ -110,8 +110,9 @@ class LlmService {
     const systemPrompt = [
       'Summarize this judge paradigm as concise bullet points. No transition words, no filler.',
       'Only include bullets that the paradigm clearly supports. Use this checklist:',
-      '• K stance — good/bad for kritiks? Will they vote on framework?',
-      '• T stance — how do they evaluate topicality? Good for T vs critical affs?',
+      '• Neg Ks — good/bad for kritiks on the neg? Will they vote on the alt? Framework preferences?',
+      '• K affs & T — stance on critical/non-traditional affs AND topicality vs K affs. Combine into one bullet. Do they think affs should defend the resolution/a plan? Will they vote on framework/T against K affs?',
+      '• T stance — how do they evaluate topicality in general (not vs K affs)?',
       '• CP/DA — any strong preferences on counterplans or disadvantages?',
       '• Theory — if they say specific args are bad/good (e.g. consult/conditioning/delay CPs, international fiat, 50 state fiat, condo), state exactly which and their opinion. If they say reject-the-arg-not-the-team or reject-the-team, state it.',
       '• Speed — do they dislike speed or have a cap?',
