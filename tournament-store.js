@@ -55,15 +55,6 @@ class TournamentStore {
     this.save();
   }
 
-  getAllTeamChannelId() {
-    return this.settings.allTeamChannelId || null;
-  }
-
-  setAllTeamChannelId(channelId) {
-    this.settings.allTeamChannelId = channelId;
-    this.save();
-  }
-
   /**
    * Add or update a tournament tracking configuration.
    * @param {string} tournId - Tabroom tournament ID

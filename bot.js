@@ -29,9 +29,6 @@ class ClerkKentBot {
     this.paradigmService = new ParadigmService();
     this.llmService = new LlmService();
     this.reportBuilder = new ReportBuilder();
-    this._roundBatches = {};       // { roundKey: { rows: [], timer, firstSeen } }
-    this._allTeamChannelId = this.store.getAllTeamChannelId(); // persisted across restarts
-    this._watchFilters = [];       // extra watch filters: [{ type: 'team'|'judge', value: '...' }]
     this.setupEventHandlers();
   }
 
@@ -61,29 +58,6 @@ class ClerkKentBot {
     // Channel override — no mention needed, just a message in the same channel
     if (this._pendingSession && !message.mentions.has(this.client.user)) {
       const text = message.content.trim();
-      // Detect all-team channel override: "all-team=#channel-name"
-      const allTeamMatch = text.match(/^all[- ]?team\s*=\s*(?:<#(\d+)>|#?([\w-]+))$/i);
-      if (allTeamMatch) {
-        const chId = allTeamMatch[1]; // Discord mention format
-        const chName = allTeamMatch[2]; // plain text format
-        let channelId = chId || null;
-        if (!channelId && chName) {
-          for (const [, guild] of this.client.guilds.cache) {
-            const channels = await guild.channels.fetch();
-            const found = channels.find(c => c && c.name && c.name.toLowerCase() === chName.toLowerCase());
-            if (found) { channelId = found.id; break; }
-          }
-        }
-        if (channelId) {
-          this._allTeamChannelId = channelId;
-          this.store.setAllTeamChannelId(channelId);
-          await this._updateSetupMessage();
-          try { await message.delete(); } catch {}
-        } else {
-          await message.reply(`⚠️ Channel **${chName}** not found.`);
-        }
-        return;
-      }
       if (/\w+=/.test(text)) {
         await this._handleChannelOverride(message, text);
         return;
@@ -121,22 +95,6 @@ class ClerkKentBot {
 
     if (lowerContent.startsWith('add entry ')) {
       await this.handleAddEntry(message, content.slice('add entry '.length).trim());
-      return;
-    }
-
-    if (/^all[- ]?team\s+(report|channel)/i.test(lowerContent)) {
-      await this.handleSetAllTeamChannel(message, message.content);
-      return;
-    }
-
-    if (/^watch\s+/i.test(lowerContent)) {
-      await this.handleWatch(message, content.slice('watch '.length).trim());
-      return;
-    }
-
-    if (lowerContent === 'unwatch all') {
-      this._watchFilters = [];
-      await message.reply('✅ Cleared all watch filters.');
       return;
     }
 
@@ -266,7 +224,6 @@ class ClerkKentBot {
         .setTitle(`📋 ${result.tournamentName} — Channel Mapping`)
         .setDescription(
           lines.join('\n') + '\n\n' +
-          '📊 All-team report: type `all-team=#channel-name` to set\n\n' +
           'Type overrides like `OC=#some-channel` or click **Confirm & Start** when ready.'
         )
         .setColor(0x5865f2);
@@ -316,15 +273,10 @@ class ClerkKentBot {
       return `❌ **${team}** → _unmatched_`;
     });
 
-    const allTeamLine = this._allTeamChannelId
-      ? `📊 All-team report → <#${this._allTeamChannelId}>`
-      : '📊 All-team report: type `all-team=#channel-name` to set';
-
     const embed = new EmbedBuilder()
       .setTitle(`📋 ${session.tournamentName} — Channel Mapping`)
       .setDescription(
         lines.join('\n') + '\n\n' +
-        allTeamLine + '\n\n' +
         'Type overrides like `OC=#some-channel` or click **Confirm & Start** when ready.'
       )
       .setColor(0x5865f2);
@@ -485,10 +437,6 @@ class ClerkKentBot {
       this.emailMonitor = null;
     }
     this.store.clearActiveSession();
-    this._allTeamChannelId = null;
-    this.store.setAllTeamChannelId(null);
-    this._watchFilters = [];
-    this._roundBatches = {};
     await message.reply('✅ Pairings pipeline stopped and session cleared.');
   }
 
@@ -536,52 +484,6 @@ class ClerkKentBot {
 
     this.store.updateChannelMapping(teamCode, channelId);
     await message.reply(`✅ Added **${teamCode}** → <#${channelId}> to pairings tracking.`);
-  }
-
-  /**
-   * Handle: @Clerk Kent all-team report #channel
-   * Sets the channel for the compact all-team round summary.
-   */
-  async handleSetAllTeamChannel(message, content) {
-    const channelMention = content.match(/<#(\d+)>/);
-    let channelId;
-
-    if (channelMention) {
-      channelId = channelMention[1];
-    } else {
-      const nameMatch = content.match(/#([\w-]+)/);
-      if (nameMatch) {
-        for (const [, guild] of this.client.guilds.cache) {
-          const channels = await guild.channels.fetch();
-          const found = channels.find(c => c && c.name && c.name.toLowerCase() === nameMatch[1].toLowerCase());
-          if (found) { channelId = found.id; break; }
-        }
-      }
-    }
-
-    if (!channelId) {
-      channelId = message.channel.id;
-    }
-
-    this._allTeamChannelId = channelId;
-    this.store.setAllTeamChannelId(channelId);
-    await message.reply(`✅ All-team report will be posted to <#${channelId}>.`);
-  }
-
-  /**
-   * Handle: @Clerk Kent watch team <name> or @Clerk Kent watch judge <name>
-   * Adds a manual watch filter — pairings involving these will appear in the all-team report.
-   */
-  async handleWatch(message, args) {
-    const typeMatch = args.match(/^(team|judge)\s+(.+)$/i);
-    if (!typeMatch) {
-      await message.reply('**Usage:** `@Clerk Kent watch team North Hollywood LZ` or `@Clerk Kent watch judge Smith`');
-      return;
-    }
-    const type = typeMatch[1].toLowerCase();
-    const value = typeMatch[2].trim();
-    this._watchFilters.push({ type, value });
-    await message.reply(`✅ Watching ${type}: **${value}** — will include in all-team report.`);
   }
 
   /**
@@ -651,8 +553,6 @@ class ClerkKentBot {
             roundNumber: null,
           };
 
-          // Add to all-team batch immediately (before slow lookups)
-          this._addToRoundBatchEarly(pairingData);
           await this._processSinglePairing(pairingData, session);
         }
       } else {
@@ -674,8 +574,6 @@ class ClerkKentBot {
           opponentSide = 'A';
           side = 'NEG';
         } else {
-          // Not our team — check watch filters for all-team report
-          this._checkWatchFilters(parsed);
           return;
         }
 
@@ -693,8 +591,6 @@ class ClerkKentBot {
           neg: parsed.neg,
         };
 
-        // Add to all-team batch immediately (before slow lookups)
-        this._addToRoundBatchEarly(pairingData);
         await this._processSinglePairing(pairingData, session);
       }
     } catch (err) {
@@ -807,140 +703,6 @@ class ClerkKentBot {
     if (embeds.length > 0) {
       await channel.send({ embeds: embeds.slice(0, 10) });
       console.log(`✅ Sent pairings report for ${ourTeamCode} (${roundTitle || 'Round ' + (roundNumber || '?')})`);
-    }
-  }
-
-  // ─── ALL-TEAM ROUND REPORT ─────────────────────────────────────
-
-  /**
-   * Add a pairing row to the round batch immediately from parsed email data.
-   * Uses only data available at parse time (no caselist/paradigm lookups needed).
-   */
-  _addToRoundBatchEarly(pairing) {
-    if (!this._allTeamChannelId) {
-      console.log('[AllTeamReport] Skipped — no all-team channel set');
-      return;
-    }
-
-    const { ourTeamCode, opponentCode, side, room, judges, roundTitle, roundNumber, startTime } = pairing;
-    const roundKey = (roundTitle || `Round ${roundNumber || '?'}`).replace(/\s+/g, '_').toLowerCase();
-    const now = Date.now();
-
-    if (!this._roundBatches[roundKey]) {
-      this._roundBatches[roundKey] = { rows: [], firstSeen: now, timer: null, startTime: startTime || null };
-    }
-
-    const batch = this._roundBatches[roundKey];
-    const judgeNames = (judges || [])
-      .filter(j => j.name && j.name.length >= 3 && !/^-+$/.test(j.name))
-      .map(j => j.name).join(', ') || '—';
-
-    batch.rows.push({
-      team: ourTeamCode,
-      side: side || 'FLIP',
-      opponent: opponentCode || 'TBD',
-      room: room || '—',
-      judges: judgeNames,
-    });
-
-    console.log(`[AllTeamReport] Added ${ourTeamCode} to batch ${roundKey} (${batch.rows.length} rows)`);
-
-    // Reset the flush timer — flush 30s after the last pairing arrives
-    if (batch.timer) clearTimeout(batch.timer);
-    batch.timer = setTimeout(() => this._flushRoundBatch(roundKey), 30000);
-
-    // Hard cap: if 3 minutes since first pairing, flush now
-    if (now - batch.firstSeen >= 180000) {
-      clearTimeout(batch.timer);
-      this._flushRoundBatch(roundKey);
-    }
-  }
-
-  /**
-   * Check if a pairing matches any manual watch filters.
-   */
-  _matchesWatchFilter(pairingData) {
-    if (this._watchFilters.length === 0) return false;
-    const { opponentCode, judges } = pairingData;
-    return this._watchFilters.some(f => {
-      if (f.type === 'team') {
-        return opponentCode && opponentCode.toLowerCase().includes(f.value.toLowerCase());
-      }
-      if (f.type === 'judge') {
-        return judges && judges.some(j =>
-          j.name && j.name.toLowerCase().includes(f.value.toLowerCase())
-        );
-      }
-      return false;
-    });
-  }
-
-  /**
-   * Flush a round batch — send the all-team summary embed.
-   */
-  async _flushRoundBatch(roundKey) {
-    const batch = this._roundBatches[roundKey];
-    if (!batch || batch.rows.length === 0) return;
-    delete this._roundBatches[roundKey];
-
-    try {
-      const channel = await this.client.channels.fetch(this._allTeamChannelId);
-      if (!channel) return;
-
-      const embed = this.reportBuilder.buildAllTeamEmbed(roundKey, batch.rows, batch.startTime);
-      await channel.send({ embeds: [embed] });
-      console.log(`✅ Sent all-team report for ${roundKey} (${batch.rows.length} pairings)`);
-    } catch (err) {
-      console.error(`[AllTeamReport] Error flushing ${roundKey}:`, err.message);
-    }
-  }
-
-  /**
-   * Check if a non-our-team pairing matches watch filters and add to batch.
-   */
-  _checkWatchFilters(parsed) {
-    if (!this._allTeamChannelId || this._watchFilters.length === 0) return;
-
-    const affCode = parsed.aff?.teamCode || '';
-    const negCode = parsed.neg?.teamCode || '';
-    const judgeNames = (parsed.judges || []).map(j => j.name);
-    const roundTitle = parsed.roundTitle || `Round ${parsed.roundNumber || '?'}`;
-    const roundKey = roundTitle.replace(/\s+/g, '_').toLowerCase();
-
-    const matched = this._watchFilters.some(f => {
-      if (f.type === 'team') {
-        return affCode.toLowerCase().includes(f.value.toLowerCase()) ||
-               negCode.toLowerCase().includes(f.value.toLowerCase());
-      }
-      if (f.type === 'judge') {
-        return judgeNames.some(n => n && n.toLowerCase().includes(f.value.toLowerCase()));
-      }
-      return false;
-    });
-
-    if (!matched) return;
-
-    const now = Date.now();
-    if (!this._roundBatches[roundKey]) {
-      this._roundBatches[roundKey] = { rows: [], firstSeen: now, timer: null };
-    }
-
-    const batch = this._roundBatches[roundKey];
-    batch.rows.push({
-      team: affCode || 'TBD',
-      side: 'AFF',
-      opponent: negCode || 'TBD',
-      room: parsed.room || '—',
-      args: '—',
-      judges: judgeNames.join(', ') || '—',
-      watched: true,
-    });
-
-    if (batch.timer) clearTimeout(batch.timer);
-    batch.timer = setTimeout(() => this._flushRoundBatch(roundKey), 30000);
-    if (now - batch.firstSeen >= 180000) {
-      clearTimeout(batch.timer);
-      this._flushRoundBatch(roundKey);
     }
   }
 
