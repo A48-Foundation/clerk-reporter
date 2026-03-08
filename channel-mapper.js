@@ -24,8 +24,9 @@ class ChannelMapper {
     if (!suffix) return null;
     const target = `${suffix.toLowerCase()}-tournaments`;
     for (const [, guild] of this.client.guilds.cache) {
-      const channel = guild.channels.cache.find(
-        (c) => c.name.toLowerCase() === target
+      const channels = await guild.channels.fetch();
+      const channel = channels.find(
+        (c) => c && c.name && c.name.toLowerCase() === target
       );
       if (channel) return channel;
     }

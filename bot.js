@@ -69,7 +69,8 @@ class ClerkKentBot {
         let channelId = chId || null;
         if (!channelId && chName) {
           for (const [, guild] of this.client.guilds.cache) {
-            const found = guild.channels.cache.find(c => c.name.toLowerCase() === chName.toLowerCase());
+            const channels = await guild.channels.fetch();
+            const found = channels.find(c => c && c.name && c.name.toLowerCase() === chName.toLowerCase());
             if (found) { channelId = found.id; break; }
           }
         }
@@ -364,9 +365,8 @@ class ClerkKentBot {
           // Search all guilds for the channel
           let found = null;
           for (const [, guild] of this.client.guilds.cache) {
-            found = guild.channels.cache.find(
-              c => c.name.toLowerCase() === channelRef.toLowerCase()
-            );
+            const channels = await guild.channels.fetch();
+            found = channels.find(c => c && c.name && c.name.toLowerCase() === channelRef.toLowerCase());
             if (found) break;
           }
           if (found) {
@@ -509,7 +509,8 @@ class ClerkKentBot {
       if (parts[1]) {
         const channelName = parts[1].trim();
         for (const [, guild] of this.client.guilds.cache) {
-          const found = guild.channels.cache.find(c => c.name.toLowerCase() === channelName.toLowerCase());
+          const channels = await guild.channels.fetch();
+          const found = channels.find(c => c && c.name && c.name.toLowerCase() === channelName.toLowerCase());
           if (found) { channelId = found.id; break; }
         }
       }
@@ -543,7 +544,8 @@ class ClerkKentBot {
       const nameMatch = content.match(/#([\w-]+)/);
       if (nameMatch) {
         for (const [, guild] of this.client.guilds.cache) {
-          const found = guild.channels.cache.find(c => c.name.toLowerCase() === nameMatch[1].toLowerCase());
+          const channels = await guild.channels.fetch();
+          const found = channels.find(c => c && c.name && c.name.toLowerCase() === nameMatch[1].toLowerCase());
           if (found) { channelId = found.id; break; }
         }
       }

@@ -1,11 +1,16 @@
 const ChannelMapper = require('../channel-mapper');
 
 function createMockClient(channels = []) {
-  const guildChannelCache = {
+  const channelCollection = {
     find: (fn) => channels.find(fn),
   };
 
-  const guild = { channels: { cache: guildChannelCache } };
+  const guild = {
+    channels: {
+      cache: channelCollection,
+      fetch: jest.fn().mockResolvedValue(channelCollection),
+    },
+  };
   const guildsCache = new Map([['guild1', guild]]);
 
   return { guilds: { cache: guildsCache } };
