@@ -94,7 +94,8 @@ class EmailMonitor extends EventEmitter {
     return new Promise((resolve, reject) => {
       this._imap.openBox('INBOX', false, (err) => {
         if (err) return reject(err);
-        const criteria = ['UNSEEN', ['FROM', '@www.tabroom.com']];
+        // Search for unseen emails that are either from Tabroom OR have [TAB] in the subject
+        const criteria = ['UNSEEN', ['OR', ['FROM', '@www.tabroom.com'], ['SUBJECT', '[TAB]']]];
         this._imap.search(criteria, (err, results) => {
           if (err) return reject(err);
           resolve(results || []);
