@@ -592,7 +592,8 @@ class ClerkKentBot {
         : null;
       if (caselistResult && caselistResult.rounds.length > 0) {
         const downloadUrlFn = (path) => this.caselistService.getDownloadUrl(path);
-        argumentSummary = this.llmService.summarizeWithFallback(caselistResult.rounds, opponentSide, downloadUrlFn);
+        const negContext = opponentSide === 'N' ? { ourAff: this.store.getOurAff() } : null;
+        argumentSummary = this.llmService.summarizeWithFallback(caselistResult.rounds, opponentSide, downloadUrlFn, negContext);
 
         opponentData = {
           schoolName: caselistResult.schoolName,

@@ -29,9 +29,10 @@ class LlmService {
    * @param {Array} rounds - caselist round objects with { report, tournament, round, opensource }
    * @param {'A'|'N'} side
    * @param {Function} [getDownloadUrl] - optional fn(opensourcePath) → URL string
+   * @param {Object} [negContext] - for neg side: { ourAff } to find relevant doc link
    * @returns {string}
    */
-  summarizeArguments(rounds, side, getDownloadUrl) {
+  summarizeArguments(rounds, side, getDownloadUrl, negContext) {
     const reportsWithText = rounds.filter(r => r.report && r.report.trim());
     if (reportsWithText.length === 0) {
       return '_No round reports available._';
@@ -61,8 +62,8 @@ class LlmService {
         if (!counts.has(key)) counts.set(key, { display: arg, count: 0, latestDoc: null });
         const entry = counts.get(key);
         entry.count++;
-        // Track the most recent open source doc for this argument
-        if (round.opensource && getDownloadUrl) {
+        // For aff side, track per-argument doc links
+        if (side === 'A' && round.opensource && getDownloadUrl) {
           entry.latestDoc = getDownloadUrl(round.opensource);
         }
         mostRecent = arg;
@@ -90,7 +91,60 @@ class LlmService {
     }
     lines.push(recentLine);
 
+    // For neg side, append a single doc link for the most relevant round
+    if (side === 'N' && getDownloadUrl && negContext) {
+      const docRound = this._findNegDocRound(reportsWithText, negContext.ourAff, sorted[0]?.display);
+      if (docRound && docRound.opensource) {
+        const url = getDownloadUrl(docRound.opensource);
+        const acMatch = docRound.report.match(/1ac\s+(?:was\s+)?(.+?)(?:\s*[;,]|$)/i);
+        const acName = acMatch ? acMatch[1].trim() : 'unknown';
+        lines.push(`📄 [Open Source](${url}) — neg vs ${acName}, ${docRound.tournament} R${docRound.round}`);
+      }
+    }
+
     return lines.join('\n');
+  }
+
+  /**
+   * Find the best neg round to link open source for:
+   * 1. Most recent neg vs ourAff with an open source doc
+   * 2. Fallback: most recent neg where 2NR matches the most common 2NR, with an open source doc
+   */
+  _findNegDocRound(rounds, ourAff, mostCommon2NR) {
+    if (!ourAff && !mostCommon2NR) return null;
+
+    // Strategy 1: most recent neg vs our aff with open source
+    if (ourAff) {
+      const affLower = ourAff.toLowerCase();
+      const affAbbrev = affLower.split(/\s+/).map(w => w.slice(0, 3)).join(' ');
+      const vsAff = [...rounds].reverse().find(r => {
+        if (!r.opensource || !r.report) return false;
+        const report = r.report.toLowerCase();
+        if (report.includes(affLower)) return true;
+        if (report.includes(affAbbrev)) return true;
+        const acMatch = report.match(/1ac\s+(?:was\s+)?(.+?)(?:\s*[;,]|$)/i);
+        if (acMatch) {
+          const ac = acMatch[1].trim().toLowerCase();
+          if (ac.includes(affLower) || affLower.includes(ac)) return true;
+        }
+        return false;
+      });
+      if (vsAff) return vsAff;
+    }
+
+    // Strategy 2: most recent neg where 2NR is the most common, with open source
+    if (mostCommon2NR) {
+      const common = mostCommon2NR.toLowerCase();
+      const fallback = [...rounds].reverse().find(r => {
+        if (!r.opensource || !r.report) return false;
+        const nrMatch = r.report.match(/2nr\s+(?:was\s+)?(.+?)(?:\s*[;,.]|$)/i);
+        if (nrMatch && nrMatch[1].trim().toLowerCase() === common) return true;
+        return false;
+      });
+      if (fallback) return fallback;
+    }
+
+    return null;
   }
 
   /**
@@ -147,10 +201,11 @@ class LlmService {
    * @param {Array} rounds
    * @param {'A'|'N'} side
    * @param {Function} [getDownloadUrl] - optional fn(opensourcePath) → URL string
+   * @param {Object} [negContext] - for neg side: { ourAff }
    * @returns {string}
    */
-  summarizeWithFallback(rounds, side, getDownloadUrl) {
-    return this.summarizeArguments(rounds, side, getDownloadUrl);
+  summarizeWithFallback(rounds, side, getDownloadUrl, negContext) {
+    return this.summarizeArguments(rounds, side, getDownloadUrl, negContext);
   }
 
   /**
