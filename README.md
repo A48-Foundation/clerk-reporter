@@ -15,7 +15,7 @@ When you activate the pairings pipeline during a tournament, the bot will automa
 - **Pairing summary** — round name, your side (Aff/Neg/Flip), opponent, room, and start time
 - **Opponent scouting** — arguments the opponent has read on the relevant side, pulled from OpenCaselist with frequency analysis (e.g. "1AC - PNT (6 occurrences)", "2NR - Politics (3 occurrences)")
 - **Open source documents** — if the opponent has open sourced their most recent aff or their most recent neg strategy vs your aff, the report includes a download link
-- **Judge info** — paradigm summary, Tabroom profile link, and any notes from your Notion judge database
+- **Judge info** — concise bullet-point paradigm summary (Neg Ks, T v K Affs, T v Policy, CPs, DAs, Theory, Speed, Experience), Tabroom profile link, and any notes from your Notion judge database
 
 ### Commands
 
@@ -103,6 +103,27 @@ Remove a tracked team, or list all active tournament trackings.
 
 Searches the Notion judge database and returns info (win rate, email, prefs, tags, and any coach notes).
 
+### Example Report Output
+
+**Argument Summary (Opponent on Aff):**
+```
+1AC - PNT (6 occurrences) - Docs
+1AC - sci dip (5 occurrences) - Docs
+Most Recent: sci dip - TOC Digital Speech Series, Round 3
+```
+
+**Judge Paradigm Summary:**
+```
+• Neg Ks: Hard for neg to win that aff shouldn't weigh the plan if framework is answered well
+• T v K Affs: Aff doesn't need to solve like the plan; neg should justify their model of debate
+• T v Policy: Persuaded by negative appeals to limits; fairness is an impact
+• CPs: Non-topical CPs acceptable; prefer well-researched mechanisms; 2 condo good, 3 okay
+• DAs: Enjoys DA and case debate; impact calculus and turns case analysis important
+• Theory: Reject the argument not the team; consult/conditioning/delay CPs, intl fiat, 50 state fiat bad
+• Speed: Clarity > speed
+• Experience: Former policy debater at University of Georgia ('20), Syracuse Law ('23)
+```
+
 ### Channel Naming Convention
 
 The bot automatically maps team codes to Discord channels using this pattern:
@@ -137,7 +158,7 @@ index.js                  Entry point — env validation, bot startup
        ├─ email-parser.js      Parses email subject/body → structured pairing data
        ├─ caselist-service.js   OpenCaselist API client (auth, school/team lookup, rounds)
        ├─ paradigm-service.js   Tabroom paradigm scraper (cheerio-based)
-       ├─ llm-service.js        OpenAI summarization + frequency analysis fallback
+       ├─ llm-service.js        Argument frequency analysis + LLM paradigm bullet summaries
        ├─ channel-mapper.js     Team code → Discord channel auto-mapping
        ├─ report-builder.js     Builds Discord embed arrays
        ├─ tournament-store.js   JSON file persistence for sessions + tracking
@@ -288,7 +309,7 @@ The test suite includes **173 tests** across 6 files:
 | `email-parser.test.js` | 63 | Subject/body parsing, pairing detection, LLM fallback, validation |
 | `channel-mapper.test.js` | 14 | Team suffix extraction, channel lookup, auto-mapping |
 | `report-builder.test.js` | 21 | Embed construction, doc link fields, truncation, embed cap |
-| `llm-service.test.js` | 11 | Frequency analysis, paradigm truncation, LLM fallback |
+| `llm-service.test.js` | 13 | Frequency analysis, inline doc links, paradigm truncation, LLM fallback |
 | `caselist-service.test.js` | 31 | Team code parsing, school lookup, wiki URL construction, entry name matching |
 | `tournament-store.test.js` | 33 | Load/save, team tracking, session management, email UID tracking, settings |
 
