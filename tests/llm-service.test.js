@@ -54,8 +54,8 @@ describe('LlmService', () => {
         { tournament: 'Greenhill', round: '3', report: 'We ran sci dip; 2nr was sec K' },
       ];
       const result = service.summarizeArguments(rounds, 'A');
-      expect(result).toContain('1AC - PNT (2 occurrences)');
-      expect(result).toContain('1AC - sci dip (1 occurrence)');
+      expect(result).toContain('1AC - PNT (2)');
+      expect(result).toContain('1AC - sci dip (1)');
       expect(result).toContain('Most Recent: sci dip - Greenhill, Round 3');
     });
 
@@ -66,9 +66,9 @@ describe('LlmService', () => {
         { tournament: 'TOC', round: '3', report: '1ac land trusts; 2nr was T' },
       ];
       const result = service.summarizeArguments(rounds, 'N');
-      expect(result).toContain('2NR - WWF cp (1 occurrence)');
-      expect(result).toContain('2NR - china soft (1 occurrence)');
-      expect(result).toContain('2NR - T (1 occurrence)');
+      expect(result).toContain('2NR - WWF cp (1)');
+      expect(result).toContain('2NR - china soft (1)');
+      expect(result).toContain('2NR - T (1)');
       expect(result).toContain('Most Recent: T - TOC, Round 3');
     });
 
@@ -86,7 +86,7 @@ describe('LlmService', () => {
         { tournament: 'T2', round: '2', report: '1ac pnt' },
       ];
       const result = service.summarizeArguments(rounds, 'A');
-      expect(result).toContain('2 occurrences');
+      expect(result).toContain('(2)');
     });
 
     test('includes inline doc links when getDownloadUrl is provided', () => {
@@ -97,8 +97,8 @@ describe('LlmService', () => {
       ];
       const mockUrl = (path) => `https://dl.example.com/${path}`;
       const result = service.summarizeArguments(rounds, 'A', mockUrl);
-      expect(result).toContain('1AC - PNT (2 occurrences) - [Docs](https://dl.example.com/path/to/doc1.docx)');
-      expect(result).toContain('1AC - sci dip (1 occurrence) - [Docs](https://dl.example.com/path/to/doc3.docx)');
+      expect(result).toContain('1AC - PNT (2) - [Docs](https://dl.example.com/path/to/doc1.docx)');
+      expect(result).toContain('1AC - sci dip (1) - [Docs](https://dl.example.com/path/to/doc3.docx)');
       expect(result).toContain('Most Recent: sci dip - Greenhill, Round 3');
     });
 

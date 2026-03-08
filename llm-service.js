@@ -76,7 +76,7 @@ class LlmService {
 
     const sorted = [...counts.values()].sort((a, b) => b.count - a.count);
     const lines = sorted.map(({ display, count, latestDoc }) => {
-      let line = `${label} - ${display} (${count} occurrence${count > 1 ? 's' : ''})`;
+      let line = `${label} - ${display} (${count})`;
       if (latestDoc) line += ` - [Docs](${latestDoc})`;
       return line;
     });

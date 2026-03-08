@@ -172,7 +172,7 @@ describe('ReportBuilder', () => {
         teamCode: 'PK',
         caselistUrl: 'https://opencaselist.com/hspolicy25/Coppell/CoPk',
         side: 'Aff',
-        argumentSummary: '1AC - PNT (3 occurrences) - [Docs](https://example.com/dl)\nMost Recent: PNT - Stanford, Round 4',
+        argumentSummary: '1AC - PNT (3) - [Docs](https://example.com/dl)\nMost Recent: PNT - Stanford, Round 4',
       };
       const embed = builder.buildOpponentEmbed(opponent);
       const fieldMap = Object.fromEntries(
