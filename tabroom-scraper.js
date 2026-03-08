@@ -8,12 +8,14 @@ class TabroomScraper {
   // Shared authenticated cookies (set via login())
   static _cookies = '';
   static _loggedIn = false;
+  static _loginTime = 0;
+  static LOGIN_TTL = 30 * 60 * 1000; // re-login after 30 minutes
 
   /**
    * Authenticate with Tabroom. Required for entries pages.
    */
   static async login() {
-    if (this._loggedIn) return;
+    if (this._loggedIn && Date.now() - this._loginTime < this.LOGIN_TTL) return;
 
     const email = process.env.TABROOM_EMAIL;
     const password = process.env.TABROOM_PASSWORD;
@@ -51,6 +53,7 @@ class TabroomScraper {
     }
 
     this._loggedIn = true;
+    this._loginTime = Date.now();
   }
 
   static _mergeCookies(res) {
@@ -154,6 +157,21 @@ class TabroomScraper {
     }
 
     // Scrape specific event entries
+    let entries = await this._scrapeEntriesPage(tournId, eventId);
+    let tournamentName = entries._tournamentName;
+
+    // If no entries found, force re-login and retry once
+    if (entries.length === 0) {
+      console.log('[TabroomScraper] No entries found — forcing re-login and retrying...');
+      this._loggedIn = false;
+      entries = await this._scrapeEntriesPage(tournId, eventId);
+      tournamentName = entries._tournamentName;
+    }
+
+    return { tournamentName, events: [], entries };
+  }
+
+  static async _scrapeEntriesPage(tournId, eventId) {
     const html = await this.authenticatedFetch(
       `${BASE_URL}/index/tourn/fields.mhtml?tourn_id=${tournId}&event_id=${eventId}`
     );
@@ -175,7 +193,8 @@ class TabroomScraper {
       }
     });
 
-    return { tournamentName, events: [], entries };
+    entries._tournamentName = tournamentName;
+    return entries;
   }
 
   /**
