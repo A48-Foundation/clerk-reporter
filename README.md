@@ -121,7 +121,7 @@ Most Recent: sci dip - TOC Digital Speech Series, Round 3
 • DAs: Enjoys DA and case debate; impact calculus and turns case analysis important
 • Theory: Reject the argument not the team; consult/conditioning/delay CPs, intl fiat, 50 state fiat bad
 • Speed: Clarity > speed
-• Experience: Former policy debater at University of Georgia ('20), Syracuse Law ('23)
+• Experience: Former policy debater at University of Washington
 ```
 
 ### Channel Naming Convention
@@ -158,7 +158,7 @@ index.js                  Entry point — env validation, bot startup
        ├─ email-parser.js        Parses email subject/body → structured pairing data
        ├─ caselist-service.js    OpenCaselist API client (auth, school/team lookup, rounds)
        ├─ paradigm-service.js    Tabroom paradigm scraper (cheerio-based)
-       ├─ paradigm-summarizer.js ★ Standalone LLM paradigm summarizer (reusable)
+       ├─ paradigm-summarizer.js LLM paradigm summarizer (reusable)
        ├─ llm-service.js         Argument frequency analysis + delegates to paradigm-summarizer
        ├─ channel-mapper.js      Team code → Discord channel auto-mapping
        ├─ report-builder.js      Builds Discord embed arrays
