@@ -30,7 +30,7 @@ class ClerkKentBot {
     this.llmService = new LlmService();
     this.reportBuilder = new ReportBuilder();
     this._roundBatches = {};       // { roundKey: { rows: [], timer, firstSeen } }
-    this._allTeamChannelId = null; // channel for all-team report
+    this._allTeamChannelId = this.store.getAllTeamChannelId(); // persisted across restarts
     this._watchFilters = [];       // extra watch filters: [{ type: 'team'|'judge', value: '...' }]
     this.setupEventHandlers();
   }
@@ -76,6 +76,7 @@ class ClerkKentBot {
         }
         if (channelId) {
           this._allTeamChannelId = channelId;
+          this.store.setAllTeamChannelId(channelId);
           await this._updateSetupMessage();
           try { await message.delete(); } catch {}
         } else {
@@ -485,6 +486,7 @@ class ClerkKentBot {
     }
     this.store.clearActiveSession();
     this._allTeamChannelId = null;
+    this.store.setAllTeamChannelId(null);
     this._watchFilters = [];
     this._roundBatches = {};
     await message.reply('✅ Pairings pipeline stopped and session cleared.');
@@ -562,6 +564,7 @@ class ClerkKentBot {
     }
 
     this._allTeamChannelId = channelId;
+    this.store.setAllTeamChannelId(channelId);
     await message.reply(`✅ All-team report will be posted to <#${channelId}>.`);
   }
 
@@ -809,7 +812,10 @@ class ClerkKentBot {
    * Pairings for the same round within 10 minutes are grouped together.
    */
   _addToRoundBatch(pairing, opponentData, judgeEmbedData) {
-    if (!this._allTeamChannelId) return;
+    if (!this._allTeamChannelId) {
+      console.log('[AllTeamReport] Skipped — no all-team channel set');
+      return;
+    }
 
     const { ourTeamCode, opponentCode, side, room, judges, roundTitle, roundNumber } = pairing;
     const roundKey = (roundTitle || `Round ${roundNumber || '?'}`).replace(/\s+/g, '_').toLowerCase();
