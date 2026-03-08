@@ -115,8 +115,10 @@ class LlmService {
       '• CP/DA — any strong preferences on counterplans or disadvantages?',
       '• Speed — do they dislike speed or have a cap?',
       '• Experience — years judging, coaching background, debate style they competed in',
+      '• Non-policy background — if they did LD, PF, parli, speech, or another activity instead of policy, state it',
+      '• Speaker points — if they mention a speaker point range, scale, or criteria, state it',
       '• Strong indicators — any auto-rejects, hard preferences, or dealbreakers',
-      'Skip any category with no clear signal. Max 6 bullets. Format: "• Topic: detail"',
+      'Skip any category with no clear signal. Max 8 bullets. Format: "• Topic: detail"',
     ].join('\n');
 
     try {
