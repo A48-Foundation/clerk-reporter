@@ -37,6 +37,7 @@ class ClerkKentBot {
       console.log(`✅ Clerk Kent is online as ${readyClient.user.tag}`);
       readyClient.user.setActivity('for @Clerk Kent [judge]', { type: 2 }); // "Listening to"
       this.channelMapper = new ChannelMapper(this.client);
+      this._restoreEmailMonitor();
     });
 
     this.client.on(Events.MessageCreate, async (message) => {
@@ -445,23 +446,34 @@ class ClerkKentBot {
       const { uid, raw } = eventData;
       let { parsed } = eventData;
 
+      console.log(`[handlePairingEvent] Received email UID ${uid}`);
+
       const session = this.store.getActiveSession();
-      if (!session) return;
+      if (!session) {
+        console.log('[handlePairingEvent] No active session — ignoring');
+        return;
+      }
 
       // Check if already processed
-      if (this.store.isEmailProcessed(uid)) return;
+      if (this.store.isEmailProcessed(uid)) {
+        console.log(`[handlePairingEvent] Email UID ${uid} already processed — skipping`);
+        return;
+      }
       this.store.addProcessedEmailUid(uid);
 
       // If the initial regex parse was incomplete, try LLM fallback
       if (!parsed || !EmailParser._isCompletePairing(parsed)) {
+        console.log(`[handlePairingEvent] Initial parse incomplete, trying LLM fallback...`);
         if (raw) {
           parsed = await EmailParser.parseWithFallback(raw, this.llmService);
         }
         if (!parsed) {
-          console.log(`[Pairing] Email ${uid} skipped — incomplete pairing data`);
+          console.log(`[handlePairingEvent] Email ${uid} skipped — incomplete pairing data`);
           return;
         }
       }
+
+      console.log(`[handlePairingEvent] Parsed format: ${parsed.format}, round: ${parsed.roundTitle}`);
 
       const schoolNames = (process.env.SCHOOL_NAMES || 'Interlake,Cuttlefish')
         .split(',')
@@ -1003,6 +1015,26 @@ class ClerkKentBot {
    */
   async start() {
     await this.client.login(process.env.DISCORD_TOKEN);
+  }
+
+  /**
+   * Restore the email monitor if there's a persisted active session.
+   */
+  _restoreEmailMonitor() {
+    const session = this.store.getActiveSession();
+    if (!session || !session.emailMonitorActive) return;
+
+    console.log(`[Restore] Found active session for tournament ${session.tournId} — restarting email monitor`);
+
+    this.emailMonitor = new EmailMonitor({
+      email: process.env.IMAP_EMAIL,
+      password: process.env.IMAP_PASSWORD,
+    });
+
+    this.emailMonitor.on('pairing', (eventData) => this.handlePairingEvent(eventData));
+    this.emailMonitor.on('error', (err) => console.error('[EmailMonitor] Error:', err.message));
+    this.emailMonitor.on('connected', () => console.log('📧 Email monitor reconnected (restored from session)'));
+    this.emailMonitor.start();
   }
 }
 

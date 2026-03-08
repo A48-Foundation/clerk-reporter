@@ -65,7 +65,9 @@ class EmailMonitor extends EventEmitter {
   }
 
   async poll() {
+    console.log('[EmailMonitor] Polling for new emails...');
     const uids = await this._search();
+    console.log(`[EmailMonitor] Found ${uids.length} unseen email(s)${uids.length > 0 ? ': UIDs ' + uids.join(', ') : ''}`);
     for (const uid of uids) {
       try {
         const raw = await this._fetchMessage(uid);
@@ -77,14 +79,20 @@ class EmailMonitor extends EventEmitter {
           body: parsed.text || ''
         };
 
+        console.log(`[EmailMonitor] Email UID ${uid}: subject="${emailData.subject}", from="${emailData.from}"`);
+
         if (!EmailParser.isPairingEmail(emailData)) {
+          console.log(`[EmailMonitor] Email UID ${uid} skipped — not a pairing email`);
           continue;
         }
 
+        console.log(`[EmailMonitor] Email UID ${uid} IS a pairing email — parsing...`);
         const result = EmailParser.parse(emailData);
+        console.log(`[EmailMonitor] Parsed result:`, JSON.stringify(result, null, 2).slice(0, 500));
         this.emit('pairing', { uid, parsed: result, raw: emailData });
         await this._markSeen(uid);
       } catch (err) {
+        console.error(`[EmailMonitor] Error processing UID ${uid}:`, err.message);
         this.emit('error', err);
       }
     }

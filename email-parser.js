@@ -58,13 +58,22 @@ class EmailParser {
       return emptyLiveUpdateResult();
     }
 
+    // Strip forwarded message headers (Gmail "---------- Forwarded message ---------" blocks)
+    let cleaned = bodyText.replace(
+      /^-{5,}\s*Forwarded message\s*-{5,}\s*\n(?:(?:From|Date|Subject|To|Cc):.*\n)*/mi,
+      ''
+    ).trim();
+
+    // Also strip quoted reply headers ("> " prefixed lines at the start, "On ... wrote:" lines)
+    cleaned = cleaned.replace(/^On .+ wrote:\s*\n/mi, '').trim();
+
     // Detect Format B by "ENTRIES" section or "Full assignments for" header
-    if (/^ENTRIES$/m.test(bodyText) || /^Full assignments for /mi.test(bodyText)) {
-      return this._parseAssignmentsBody(bodyText);
+    if (/^ENTRIES$/m.test(cleaned) || /^Full assignments for /mi.test(cleaned)) {
+      return this._parseAssignmentsBody(cleaned);
     }
 
     // Default: Format A
-    return this._parseLiveUpdateBody(bodyText);
+    return this._parseLiveUpdateBody(cleaned);
   }
 
   // ─── FORMAT A: Live Update ─────────────────────────────────────────
@@ -226,7 +235,9 @@ class EmailParser {
    */
   static isTabroomEmail(email) {
     if (!email || typeof email !== 'object') return false;
-    if (email.subject && /^\[TAB\]/i.test(email.subject.trim())) return true;
+    const subject = (email.subject || '').trim();
+    // Match [TAB] anywhere in subject (handles Fwd:, Re: prefixes)
+    if (/\[TAB\]/i.test(subject)) return true;
     if (email.from && /@www\.tabroom\.com/i.test(email.from)) return true;
     return false;
   }
@@ -270,11 +281,11 @@ class EmailParser {
     if (negBodySignals >= 2 && posSignals === 0) return false;
 
     // Subject-based strong positive: "[TAB] Team Round N Event" (numeric round)
-    if (/^\[TAB\].+Round\s+\d+\s+/i.test(subject)) return posSignals >= 1 || true;
+    if (/\[TAB\].+Round\s+\d+\s+/i.test(subject)) return posSignals >= 1 || true;
 
     // Subject-based moderate positive: "[TAB] School Round Assignments"
     // Requires body confirmation
-    if (/^\[TAB\].+Round\s+Assignments$/i.test(subject)) return posSignals >= 2;
+    if (/\[TAB\].+Round\s+Assignments$/i.test(subject)) return posSignals >= 2;
 
     // Body-only detection — need strong structural signals
     return posSignals >= 2;
