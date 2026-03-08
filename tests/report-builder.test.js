@@ -147,7 +147,7 @@ describe('ReportBuilder', () => {
         'Policy judge, prefers tech over truth.',
       );
       expect(fieldMap['Paradigm Link'].value).toContain('[View Paradigm]');
-      expect(fieldMap['Notion Notes'].value).toContain('[View Notes]');
+      expect(fieldMap['**Comments**'].value).toContain('Good judge for K debates');
     });
 
     test('judge with no paradigm or notion shows minimal embed', () => {
@@ -158,7 +158,7 @@ describe('ReportBuilder', () => {
       );
       expect(fieldMap['Paradigm Summary'].value).toBe('Not found');
       expect(fieldMap['Paradigm Link'].value).toBe('N/A');
-      expect(fieldMap['Notion Notes']).toBeUndefined();
+      expect(fieldMap['**Comments**']).toBeUndefined();
     });
 
     test('paradigm > 1000 chars gets truncated', () => {

@@ -81,12 +81,10 @@ class ReportBuilder {
       },
     ];
 
-    if (notionNotes || notionUrl) {
+    if (notionNotes) {
       fields.push({
-        name: 'Notion Notes',
-        value: notionUrl
-          ? `[View Notes](${notionUrl})\n${notionNotes || ''}`
-          : notionNotes || 'N/A',
+        name: '**Comments**',
+        value: notionNotes,
         inline: false,
       });
     }
