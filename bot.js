@@ -617,6 +617,9 @@ class ClerkKentBot {
     const judgeEmbedData = [];
     for (const judge of judges) {
       const judgeName = judge.name;
+      // Skip obviously invalid judge names (email signature artifacts, etc.)
+      if (!judgeName || judgeName.length < 3 || /^-+$/.test(judgeName) || /^(thanks|sent from|cheers)/i.test(judgeName)) continue;
+
       let paradigmSummary = null;
       let paradigmUrl = null;
       let school = null;

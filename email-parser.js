@@ -92,9 +92,10 @@ class EmailParser {
       if (trimmed === '') continue;
 
       // Stop parsing at footer separators or Tabroom footer boilerplate
-      if (/^-{3,}$/.test(trimmed)) break;
+      if (/^-{2,}$/.test(trimmed)) break;
       if (/^You received this email/i.test(trimmed)) break;
       if (/^To stop them/i.test(trimmed)) break;
+      if (/^thanks[!.,]?\s/i.test(trimmed) || /^sent from/i.test(trimmed)) break;
 
       if (/^competitors$/i.test(trimmed)) {
         section = 'competitors';
