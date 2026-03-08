@@ -70,8 +70,11 @@ class ClerkKentBot {
     // Check for tournament management commands
     const lowerContent = content.toLowerCase();
 
-    if (lowerContent.startsWith('initiate pairings reports ')) {
-      await this.handleInitiatePairings(message, content.slice('initiate pairings reports '.length).trim());
+    // Fuzzy match for "initiate pairings reports" — allow typos, missing words, URL anywhere
+    const tabroomUrlMatch = content.match(/https?:\/\/(?:www\.)?tabroom\.com\S+/i);
+    if (/\binit\w*\s+pair/i.test(lowerContent) || /\bpairings?\s+reports?\b/i.test(lowerContent)) {
+      const url = tabroomUrlMatch ? tabroomUrlMatch[0] : '';
+      await this.handleInitiatePairings(message, url);
       return;
     }
 
@@ -102,6 +105,12 @@ class ClerkKentBot {
 
     if (lowerContent.startsWith('report ')) {
       await this.handleReport(message, content.slice(7).trim());
+      return;
+    }
+
+    // Channel override while a pending session exists (e.g. "CG=#helpful-things")
+    if (this._pendingSession && /\w+=/.test(content)) {
+      await this._handleChannelOverride(message, content);
       return;
     }
 
@@ -217,57 +226,84 @@ class ClerkKentBot {
 
       await message.reply({ embeds: [embed], components: [row] });
 
-      // Store pending session for the button handler
+      // Store pending session for the button handler + override handler
+      // allEntries stores all teams from the tournament for opponent name lookups
       this._pendingSession = {
         tournId,
         tournamentUrl: url,
         tournamentName: result.tournamentName,
         mapping,
+        allEntries: result.entries,
         channelId: message.channel.id,
         userId: message.author.id,
       };
 
-      // Also listen for text override messages for 60 seconds
-      const overrideFilter = (msg) =>
-        msg.author.id === message.author.id && !msg.author.bot &&
-        (msg.content.includes('=') || msg.content.toLowerCase().includes('add entry'));
-
-      const collector = message.channel.createMessageCollector({
-        filter: overrideFilter,
-        time: 60000,
-      });
-
-      collector.on('collect', (msg) => {
-        if (!this._pendingSession) return;
-        const overridePattern = /(\w+)=(?:#?)([\w-]+)/g;
-        let match;
-        while ((match = overridePattern.exec(msg.content)) !== null) {
-          const [, suffix, channelRef] = match;
-          for (const team of Object.keys(this._pendingSession.mapping)) {
-            const teamSuffix = this.channelMapper.extractTeamSuffix(team);
-            if (teamSuffix && teamSuffix.toLowerCase() === suffix.toLowerCase()) {
-              for (const [, guild] of this.client.guilds.cache) {
-                const found = guild.channels.cache.find(
-                  c => c.name.toLowerCase() === channelRef.toLowerCase()
-                );
-                if (found) {
-                  this._pendingSession.mapping[team] = {
-                    channelId: found.id,
-                    channelName: found.name,
-                    confidence: 'manual',
-                  };
-                  msg.react('✅');
-                  break;
-                }
-              }
-            }
-          }
-        }
-      });
-
     } catch (err) {
       console.error('Error in initiate pairings command:', err);
       await message.reply('⚠️ Something went wrong while setting up pairings. Check the URL and try again.');
+    }
+  }
+
+  /**
+   * Handle channel override messages like "CG=#helpful-things" while a pending session exists.
+   */
+  async _handleChannelOverride(message, content) {
+    const overridePattern = /(\w+)=(?:#?)([\w-]+)/g;
+    let match;
+    let anyApplied = false;
+    const results = [];
+
+    while ((match = overridePattern.exec(content)) !== null) {
+      const [, suffix, channelRef] = match;
+      let matched = false;
+
+      for (const team of Object.keys(this._pendingSession.mapping)) {
+        const teamSuffix = this.channelMapper.extractTeamSuffix(team);
+        if (teamSuffix && teamSuffix.toLowerCase() === suffix.toLowerCase()) {
+          // Search all guilds for the channel
+          let found = null;
+          for (const [, guild] of this.client.guilds.cache) {
+            found = guild.channels.cache.find(
+              c => c.name.toLowerCase() === channelRef.toLowerCase()
+            );
+            if (found) break;
+          }
+          if (found) {
+            this._pendingSession.mapping[team] = {
+              channelId: found.id,
+              channelName: found.name,
+              confidence: 'manual',
+            };
+            results.push(`✅ **${team}** → #${found.name}`);
+            anyApplied = true;
+            matched = true;
+          } else {
+            results.push(`⚠️ Channel **${channelRef}** not found for **${team}**`);
+            matched = true;
+          }
+          break;
+        }
+      }
+
+      if (!matched) {
+        results.push(`⚠️ No team found with suffix **${suffix}**`);
+      }
+    }
+
+    if (results.length > 0) {
+      // Show updated mapping
+      const allLines = Object.entries(this._pendingSession.mapping).map(([team, info]) => {
+        if (info.confidence === 'manual') return `🔧 **${team}** → #${info.channelName}`;
+        if (info.confidence === 'auto') return `✅ **${team}** → #${info.channelName}`;
+        return `❌ **${team}** → _unmatched_`;
+      });
+
+      await message.reply(
+        results.join('\n') + '\n\n**Updated mapping:**\n' + allLines.join('\n') +
+        '\n\nClick **Confirm & Start** when ready.'
+      );
+    } else {
+      await message.reply('⚠️ Could not parse any overrides. Use format: `CG=#channel-name`');
     }
   }
 
@@ -292,8 +328,8 @@ class ClerkKentBot {
         }
       }
 
-      // Store the active session
-      this.store.setActiveSession(session.tournId, session.tournamentUrl, channelMappings);
+      // Store the active session (including allEntries for opponent name lookups)
+      this.store.setActiveSession(session.tournId, session.tournamentUrl, channelMappings, session.allEntries);
 
       // Start email monitor
       if (this.emailMonitor) {
@@ -515,12 +551,18 @@ class ClerkKentBot {
 
     await channel.sendTyping();
 
-    // Look up opponent on caselist
+    // Look up opponent on caselist using entry names from Tabroom
     let opponentData = null;
     let argumentSummary = '_No caselist data found._';
     if (opponentCode) {
+      // Get the opponent's entry names from the stored entries (e.g. "Levine & Zhang")
+      const opponentEntryNames = this.store.getEntryNamesForTeam(opponentCode);
+      if (opponentEntryNames) {
+        console.log(`[Pairing] Opponent ${opponentCode} entry names: "${opponentEntryNames}"`);
+      }
+
       const caselistResult = opponentSide
-        ? await this.caselistService.lookupOpponent(opponentCode, opponentSide)
+        ? await this.caselistService.lookupOpponent(opponentCode, opponentSide, opponentEntryNames)
         : null;
       if (caselistResult && caselistResult.rounds.length > 0) {
         argumentSummary = await this.llmService.summarizeWithFallback(caselistResult.rounds, opponentSide);

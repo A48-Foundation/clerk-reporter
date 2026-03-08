@@ -143,11 +143,12 @@ class TournamentStore {
    * @param {string} tournamentUrl - Full Tabroom URL
    * @param {Object} channelMappings - { teamCode: channelId, ... }
    */
-  setActiveSession(tournId, tournamentUrl, channelMappings) {
+  setActiveSession(tournId, tournamentUrl, channelMappings, allEntries) {
     this.activeSession = {
       tournId,
       tournamentUrl,
       channelMappings,
+      allEntries: allEntries || [],
       emailMonitorActive: true,
       processedEmailUids: [],
       startedAt: new Date().toISOString(),
@@ -190,6 +191,20 @@ class TournamentStore {
     if (!this.activeSession) return;
     this.activeSession.channelMappings[teamCode] = channelId;
     this.save();
+  }
+
+  /**
+   * Look up the Tabroom entry names for a team code in the active session.
+   * E.g. "North Hollywood LZ" → "Levine & Zhang"
+   * @param {string} teamCode
+   * @returns {string|null}
+   */
+  getEntryNamesForTeam(teamCode) {
+    if (!this.activeSession?.allEntries) return null;
+    const entry = this.activeSession.allEntries.find(
+      e => e.code.toLowerCase() === teamCode.toLowerCase()
+    );
+    return entry ? entry.entry : null;
   }
 }
 
