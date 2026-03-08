@@ -1,7 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 
 class ReportBuilder {
-  buildPairingEmbed(pairingData) {
+  buildPairingEmbed(pairingData, opponentData) {
     const {
       roundTitle = 'Unknown Round',
       startTime,
@@ -12,48 +12,40 @@ class ReportBuilder {
       teamCode,
     } = pairingData || {};
 
+    const {
+      schoolName,
+      teamCode: oppCode,
+      caselistUrl,
+      argumentSummary,
+    } = opponentData || {};
+
     const formatTeam = (code) => {
       if (!code) return 'N/A';
       return code === teamCode ? `**${code}**` : code;
     };
 
+    const opponentName = schoolName && oppCode ? `${schoolName} ${oppCode}` : (aff.teamCode === teamCode ? neg.teamCode : aff.teamCode) || 'TBD';
+    const opponentSide = side === 'AFF' || side === 'Aff' ? 'Neg' : side === 'NEG' || side === 'Neg' ? 'Aff' : 'FLIP';
+    const caselistLink = caselistUrl ? ` — [Wiki](${caselistUrl})` : '';
+
+    const fields = [
+      { name: 'Matchup', value: `${formatTeam(aff.teamCode)} (Aff) vs ${formatTeam(neg.teamCode)} (Neg)`, inline: false },
+      { name: 'Room', value: room || 'N/A', inline: true },
+      { name: 'Start', value: startTime || 'N/A', inline: true },
+    ];
+
+    if (argumentSummary) {
+      fields.push({
+        name: `🐟 ${opponentName} (${opponentSide})${caselistLink}`,
+        value: argumentSummary,
+        inline: false,
+      });
+    }
+
     return new EmbedBuilder()
       .setTitle(`📋 ${roundTitle}`)
       .setColor(0xf5a623)
-      .addFields(
-        { name: 'Aff', value: formatTeam(aff.teamCode, 'aff'), inline: true },
-        { name: 'Neg', value: formatTeam(neg.teamCode, 'neg'), inline: true },
-        { name: 'Room', value: room || 'N/A', inline: true },
-        { name: 'Start Time', value: startTime || 'N/A', inline: true },
-        { name: 'Our Side', value: side || 'N/A', inline: false },
-      );
-  }
-
-  buildOpponentEmbed(opponentData) {
-    const {
-      schoolName = 'Unknown',
-      teamCode = 'N/A',
-      caselistUrl,
-      side,
-      argumentSummary,
-    } = opponentData || {};
-
-    return new EmbedBuilder()
-      .setTitle(`🐟 Opponent: ${schoolName} ${teamCode}`)
-      .setColor(0xe74c3c)
-      .addFields(
-        { name: 'Side', value: side || 'N/A', inline: true },
-        {
-          name: 'Caselist',
-          value: caselistUrl ? `[OpenCaselist](${caselistUrl})` : 'Not found',
-          inline: true,
-        },
-        {
-          name: 'Argument Summary',
-          value: argumentSummary || 'Not found',
-          inline: false,
-        },
-      );
+      .addFields(fields);
   }
 
   buildJudgeEmbed(judgeData) {
@@ -103,11 +95,7 @@ class ReportBuilder {
     const embeds = [];
 
     if (pairing) {
-      embeds.push(this.buildPairingEmbed(pairing));
-    }
-
-    if (opponent) {
-      embeds.push(this.buildOpponentEmbed(opponent));
+      embeds.push(this.buildPairingEmbed(pairing, opponent));
     }
 
     if (Array.isArray(judges)) {

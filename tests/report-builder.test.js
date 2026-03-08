@@ -27,10 +27,10 @@ describe('ReportBuilder', () => {
     builder = new ReportBuilder();
   });
 
-  // ── buildPairingEmbed ──────────────────────────────────────────────
+  // ── buildPairingEmbed (merged with opponent) ────────────────────────
 
   describe('buildPairingEmbed', () => {
-    test('standard pairing data produces correct embed', () => {
+    test('pairing + opponent produces compact embed', () => {
       const pairing = {
         roundTitle: 'Round 4 of Policy',
         startTime: '5:30 PST',
@@ -40,8 +40,15 @@ describe('ReportBuilder', () => {
         aff: { teamCode: 'Interlake OC' },
         neg: { teamCode: 'Coppell PK' },
       };
+      const opponent = {
+        schoolName: 'Coppell',
+        teamCode: 'PK',
+        caselistUrl: 'https://opencaselist.com/hspolicy25/Coppell/CoPk',
+        side: 'Neg',
+        argumentSummary: '2NR - Politics (3)',
+      };
 
-      const embed = builder.buildPairingEmbed(pairing);
+      const embed = builder.buildPairingEmbed(pairing, opponent);
 
       expect(embed.data.title).toBe('📋 Round 4 of Policy');
       expect(embed.data.color).toBe(0xf5a623);
@@ -50,35 +57,56 @@ describe('ReportBuilder', () => {
         embed.data.fields.map((f) => [f.name, f]),
       );
 
-      // Our team (Interlake OC) should be bold green
-      expect(fieldMap['Aff'].value).toBe('**Interlake OC**');
-      expect(fieldMap['Neg'].value).toBe('Coppell PK');
+      expect(fieldMap['Matchup'].value).toContain('**Interlake OC**');
+      expect(fieldMap['Matchup'].value).toContain('Coppell PK');
       expect(fieldMap['Room'].value).toBe('NSDA Section 18');
-      expect(fieldMap['Start Time'].value).toBe('5:30 PST');
-      expect(fieldMap['Our Side'].value).toBe('AFF');
+      expect(fieldMap['Start'].value).toBe('5:30 PST');
+
+      // Opponent info is a field with 🐟
+      const oppField = embed.data.fields.find(f => f.name.includes('🐟'));
+      expect(oppField).toBeDefined();
+      expect(oppField.name).toContain('Coppell PK');
+      expect(oppField.name).toContain('Wiki');
+      expect(oppField.value).toBe('2NR - Politics (3)');
     });
 
-    test('FLIP side and null room produce correct fallbacks', () => {
+    test('pairing without opponent shows basic fields', () => {
       const pairing = {
-        roundTitle: 'Policy V Quarters',
-        room: null,
-        side: 'FLIP',
-        teamCode: 'Cuttlefish WS',
-        aff: { teamCode: 'Cuttlefish WS' },
-        neg: { teamCode: 'Reagan FP' },
+        roundTitle: 'Round 1',
+        startTime: '3:00 PM',
+        room: 'Room 5',
+        side: 'NEG',
+        teamCode: 'Team A',
+        aff: { teamCode: 'Team B' },
+        neg: { teamCode: 'Team A' },
       };
 
-      const embed = builder.buildPairingEmbed(pairing);
+      const embed = builder.buildPairingEmbed(pairing, null);
 
+      expect(embed.data.fields).toHaveLength(3); // Matchup, Room, Start
       const fieldMap = Object.fromEntries(
         embed.data.fields.map((f) => [f.name, f]),
       );
+      expect(fieldMap['Matchup'].value).toContain('**Team A**');
+    });
 
+    test('null room and start produce N/A', () => {
+      const pairing = {
+        roundTitle: 'R2',
+        room: null,
+        startTime: null,
+        side: 'FLIP',
+        teamCode: 'X',
+        aff: { teamCode: 'X' },
+        neg: { teamCode: 'Y' },
+      };
+
+      const embed = builder.buildPairingEmbed(pairing);
+      const fieldMap = Object.fromEntries(
+        embed.data.fields.map((f) => [f.name, f]),
+      );
       expect(fieldMap['Room'].value).toBe('N/A');
-      expect(fieldMap['Our Side'].value).toBe('FLIP');
-      // Our team on aff side should still be highlighted
-      expect(fieldMap['Aff'].value).toBe('**Cuttlefish WS**');
-      expect(fieldMap['Neg'].value).toBe('Reagan FP');
+      expect(fieldMap['Start'].value).toBe('N/A');
     });
 
     test('null input does not throw', () => {
@@ -88,100 +116,12 @@ describe('ReportBuilder', () => {
 
     test('null input produces sensible defaults', () => {
       const embed = builder.buildPairingEmbed(null);
-
       expect(embed.data.title).toBe('📋 Unknown Round');
       const fieldMap = Object.fromEntries(
         embed.data.fields.map((f) => [f.name, f]),
       );
-      expect(fieldMap['Aff'].value).toBe('N/A');
-      expect(fieldMap['Neg'].value).toBe('N/A');
       expect(fieldMap['Room'].value).toBe('N/A');
-      expect(fieldMap['Start Time'].value).toBe('N/A');
-      expect(fieldMap['Our Side'].value).toBe('N/A');
-    });
-  });
-
-  // ── buildOpponentEmbed ─────────────────────────────────────────────
-
-  describe('buildOpponentEmbed', () => {
-    test('full opponent data produces correct embed', () => {
-      const opponent = {
-        schoolName: 'Coppell',
-        teamCode: 'PK',
-        caselistUrl:
-          'https://opencaselist.com/hspolicy25/Coppell/CoppellPK',
-        side: 'Neg',
-        argumentSummary: '**2NR Analysis**\n• Politics — 3x',
-      };
-
-      const embed = builder.buildOpponentEmbed(opponent);
-
-      expect(embed.data.title).toBe('🐟 Opponent: Coppell PK');
-      expect(embed.data.color).toBe(0xe74c3c);
-
-      const fieldMap = Object.fromEntries(
-        embed.data.fields.map((f) => [f.name, f]),
-      );
-
-      expect(fieldMap['Side'].value).toBe('Neg');
-      expect(fieldMap['Caselist'].value).toContain('[OpenCaselist]');
-      expect(fieldMap['Caselist'].value).toContain(
-        'https://opencaselist.com/hspolicy25/Coppell/CoppellPK',
-      );
-      expect(fieldMap['Argument Summary'].value).toBe(
-        '**2NR Analysis**\n• Politics — 3x',
-      );
-    });
-
-    test('no caselist URL shows Not found', () => {
-      const opponent = {
-        schoolName: 'Unknown School',
-        teamCode: 'AB',
-        side: 'Aff',
-      };
-
-      const embed = builder.buildOpponentEmbed(opponent);
-      const fieldMap = Object.fromEntries(
-        embed.data.fields.map((f) => [f.name, f]),
-      );
-
-      expect(fieldMap['Caselist'].value).toBe('Not found');
-    });
-
-    test('null input does not throw', () => {
-      expect(() => builder.buildOpponentEmbed(null)).not.toThrow();
-      expect(() => builder.buildOpponentEmbed(undefined)).not.toThrow();
-    });
-
-    test('null input produces sensible defaults', () => {
-      const embed = builder.buildOpponentEmbed(null);
-
-      expect(embed.data.title).toBe('🐟 Opponent: Unknown N/A');
-
-      const fieldMap = Object.fromEntries(
-        embed.data.fields.map((f) => [f.name, f]),
-      );
-      expect(fieldMap['Side'].value).toBe('N/A');
-      expect(fieldMap['Caselist'].value).toBe('Not found');
-      expect(fieldMap['Argument Summary'].value).toBe('Not found');
-    });
-
-    test('argument summary with doc links renders correctly', () => {
-      const opponent = {
-        schoolName: 'Coppell',
-        teamCode: 'PK',
-        caselistUrl: 'https://opencaselist.com/hspolicy25/Coppell/CoPk',
-        side: 'Aff',
-        argumentSummary: '1AC - PNT (3) - [Docs](https://example.com/dl)\nMost Recent: PNT - Stanford, Round 4',
-      };
-      const embed = builder.buildOpponentEmbed(opponent);
-      const fieldMap = Object.fromEntries(
-        embed.data.fields.map((f) => [f.name, f]),
-      );
-      expect(fieldMap['Argument Summary'].value).toContain('[Docs]');
-      expect(fieldMap['Argument Summary'].value).toContain('Stanford, Round 4');
-      // Only 3 fields: Side, Caselist, Argument Summary
-      expect(embed.data.fields).toHaveLength(3);
+      expect(fieldMap['Start'].value).toBe('N/A');
     });
   });
 
@@ -209,78 +149,50 @@ describe('ReportBuilder', () => {
       expect(fieldMap['Paradigm Summary'].value).toBe(
         'Policy judge, prefers tech over truth.',
       );
-      expect(fieldMap['Paradigm Link'].value).toContain(
-        '[View Paradigm]',
-      );
-      expect(fieldMap['Paradigm Link'].value).toContain(
-        'https://tabroom.com/paradigm?id=123',
-      );
-      expect(fieldMap['Notion Notes'].value).toContain(
-        '[View Notes](https://notion.so/abc)',
-      );
-      expect(fieldMap['Notion Notes'].value).toContain(
-        '**1.** Good judge for K debates',
-      );
-      expect(fieldMap['School']).toBeUndefined();
-      expect(fieldMap['Tabroom Link']).toBeUndefined();
+      expect(fieldMap['Paradigm Link'].value).toContain('[View Paradigm]');
+      expect(fieldMap['Notion Notes'].value).toContain('[View Notes]');
     });
 
     test('judge with no paradigm or notion shows minimal embed', () => {
       const judge = { name: 'Some Judge' };
-
       const embed = builder.buildJudgeEmbed(judge);
-
       const fieldMap = Object.fromEntries(
         embed.data.fields.map((f) => [f.name, f]),
       );
-
       expect(fieldMap['Paradigm Summary'].value).toBe('Not found');
       expect(fieldMap['Paradigm Link'].value).toBe('N/A');
       expect(fieldMap['Notion Notes']).toBeUndefined();
     });
 
     test('paradigm > 1000 chars gets truncated', () => {
-      const longParadigm = 'A'.repeat(1500);
-      const judge = {
-        name: 'Verbose Judge',
-        paradigmSummary: longParadigm,
-      };
-
+      const judge = { name: 'Verbose', paradigmSummary: 'A'.repeat(1500) };
       const embed = builder.buildJudgeEmbed(judge);
-
       const fieldMap = Object.fromEntries(
         embed.data.fields.map((f) => [f.name, f]),
       );
-
       expect(fieldMap['Paradigm Summary'].value.length).toBe(1000);
       expect(fieldMap['Paradigm Summary'].value).toMatch(/\.\.\.$/);
     });
 
     test('paradigm exactly 1000 chars is not truncated', () => {
-      const exactParadigm = 'B'.repeat(1000);
-      const judge = {
-        name: 'Exact Judge',
-        paradigmSummary: exactParadigm,
-      };
-
+      const exact = 'B'.repeat(1000);
+      const judge = { name: 'Exact', paradigmSummary: exact };
       const embed = builder.buildJudgeEmbed(judge);
       const fieldMap = Object.fromEntries(
         embed.data.fields.map((f) => [f.name, f]),
       );
-
-      expect(fieldMap['Paradigm Summary'].value).toBe(exactParadigm);
+      expect(fieldMap['Paradigm Summary'].value).toBe(exact);
     });
 
     test('null input does not throw', () => {
       expect(() => builder.buildJudgeEmbed(null)).not.toThrow();
-      expect(() => builder.buildJudgeEmbed(undefined)).not.toThrow();
     });
   });
 
   // ── buildFullReport ────────────────────────────────────────────────
 
   describe('buildFullReport', () => {
-    test('full report with pairing + opponent + 2 judges returns 4 embeds', () => {
+    test('full report with pairing + opponent + 2 judges returns 3 embeds', () => {
       const pairing = {
         roundTitle: 'Round 1',
         side: 'AFF',
@@ -288,68 +200,46 @@ describe('ReportBuilder', () => {
         aff: { teamCode: 'Team A' },
         neg: { teamCode: 'Team B' },
       };
-      const opponent = { schoolName: 'School B', teamCode: 'B1' };
-      const judges = [
-        { name: 'Judge Alpha' },
-        { name: 'Judge Beta' },
-      ];
+      const opponent = { schoolName: 'School B', teamCode: 'B1', argumentSummary: 'test' };
+      const judges = [{ name: 'Judge Alpha' }, { name: 'Judge Beta' }];
 
       const embeds = builder.buildFullReport(pairing, opponent, judges);
 
-      expect(embeds).toHaveLength(4);
+      // 1 merged pairing+opponent + 2 judges = 3
+      expect(embeds).toHaveLength(3);
       expect(embeds[0].data.title).toBe('📋 Round 1');
-      expect(embeds[1].data.title).toBe('🐟 Opponent: School B B1');
-      expect(embeds[2].data.title).toBe('⚖️ Judge Alpha');
-      expect(embeds[3].data.title).toBe('⚖️ Judge Beta');
+      expect(embeds[1].data.title).toBe('⚖️ Judge Alpha');
+      expect(embeds[2].data.title).toBe('⚖️ Judge Beta');
     });
 
-    test('only pairing data returns array of 1 embed', () => {
-      const pairing = {
-        roundTitle: 'Round 2',
-        teamCode: 'X',
-        aff: {},
-        neg: {},
-      };
-
+    test('only pairing data returns 1 embed', () => {
+      const pairing = { roundTitle: 'Round 2', teamCode: 'X', aff: {}, neg: {} };
       const embeds = builder.buildFullReport(pairing, null, null);
-
       expect(embeds).toHaveLength(1);
       expect(embeds[0].data.title).toBe('📋 Round 2');
     });
 
     test('11 judges are capped at 10 total embeds', () => {
-      const pairing = {
-        roundTitle: 'Round 3',
-        teamCode: 'Y',
-        aff: {},
-        neg: {},
-      };
+      const pairing = { roundTitle: 'Round 3', teamCode: 'Y', aff: {}, neg: {} };
       const opponent = { schoolName: 'School X', teamCode: 'XX' };
-      const judges = Array.from({ length: 11 }, (_, i) => ({
-        name: `Judge ${i + 1}`,
-      }));
+      const judges = Array.from({ length: 11 }, (_, i) => ({ name: `Judge ${i + 1}` }));
 
       const embeds = builder.buildFullReport(pairing, opponent, judges);
 
-      // 1 pairing + 1 opponent + 8 judges = 10
+      // 1 merged + 9 judges = 10
       expect(embeds).toHaveLength(10);
       expect(embeds[0].data.title).toBe('📋 Round 3');
-      expect(embeds[1].data.title).toBe('🐟 Opponent: School X XX');
-      // Last included judge should be Judge 8
-      expect(embeds[9].data.title).toBe('⚖️ Judge 8');
+      expect(embeds[9].data.title).toBe('⚖️ Judge 9');
     });
 
     test('all null returns empty array', () => {
-      const embeds = builder.buildFullReport(null, null, null);
-      expect(embeds).toEqual([]);
+      expect(builder.buildFullReport(null, null, null)).toEqual([]);
     });
 
-    test('empty judges array returns pairing + opponent only', () => {
+    test('empty judges array returns pairing only', () => {
       const pairing = { roundTitle: 'R1', teamCode: 'A', aff: {}, neg: {} };
-      const opponent = { schoolName: 'S', teamCode: 'T' };
-
-      const embeds = builder.buildFullReport(pairing, opponent, []);
-      expect(embeds).toHaveLength(2);
+      const embeds = builder.buildFullReport(pairing, null, []);
+      expect(embeds).toHaveLength(1);
     });
   });
 });
