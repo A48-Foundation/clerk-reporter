@@ -36,52 +36,24 @@ class ReportBuilder {
       caselistUrl,
       side,
       argumentSummary,
-      docInfo,
     } = opponentData || {};
-
-    const fields = [
-      { name: 'Side', value: side || 'N/A', inline: true },
-      {
-        name: 'Caselist',
-        value: caselistUrl ? `[OpenCaselist](${caselistUrl})` : 'Not found',
-        inline: true,
-      },
-      {
-        name: 'Argument Summary',
-        value: argumentSummary || 'Not found',
-        inline: false,
-      },
-    ];
-
-    if (docInfo) {
-      if (side === 'Aff') {
-        // Opponent is AFF — show their most recent aff doc
-        const docLine = docInfo.downloadUrl
-          ? `[Download](${docInfo.downloadUrl}) — ${docInfo.tournament} R${docInfo.round}`
-          : `${docInfo.tournament} R${docInfo.round} (no open source)`;
-        fields.push({
-          name: '📄 Most Recent Aff Open Source',
-          value: docLine,
-          inline: false,
-        });
-      } else if (side === 'Neg') {
-        // Opponent is NEG — show their most recent neg vs our aff
-        let docLine = `${docInfo.tournament} R${docInfo.round}`;
-        if (docInfo.strategy) docLine += ` — 2NR: ${docInfo.strategy}`;
-        if (docInfo.downloadUrl) docLine += `\n[Download](${docInfo.downloadUrl})`;
-        else docLine += '\n(no open source)';
-        fields.push({
-          name: '📄 Most Recent Neg vs Our Aff',
-          value: docLine,
-          inline: false,
-        });
-      }
-    }
 
     return new EmbedBuilder()
       .setTitle(`🔍 Opponent: ${schoolName} ${teamCode}`)
       .setColor(0xe74c3c)
-      .addFields(fields);
+      .addFields(
+        { name: 'Side', value: side || 'N/A', inline: true },
+        {
+          name: 'Caselist',
+          value: caselistUrl ? `[OpenCaselist](${caselistUrl})` : 'Not found',
+          inline: true,
+        },
+        {
+          name: 'Argument Summary',
+          value: argumentSummary || 'Not found',
+          inline: false,
+        },
+      );
   }
 
   buildJudgeEmbed(judgeData) {

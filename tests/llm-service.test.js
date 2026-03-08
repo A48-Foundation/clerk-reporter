@@ -49,27 +49,27 @@ describe('LlmService', () => {
 
     test('extracts 1AC arguments for aff side', () => {
       const rounds = [
-        { tournament: 'Stanford', round: 'R1', report: '1ac PNT; 2nr PTX' },
-        { tournament: 'Berkeley', round: 'R2', report: '1ac PNT; 2nr putin' },
-        { tournament: 'Greenhill', round: 'R3', report: 'We ran sci dip; 2nr was sec K' },
+        { tournament: 'Stanford', round: '1', report: '1ac PNT; 2nr PTX' },
+        { tournament: 'Berkeley', round: '2', report: '1ac PNT; 2nr putin' },
+        { tournament: 'Greenhill', round: '3', report: 'We ran sci dip; 2nr was sec K' },
       ];
       const result = service.summarizeArguments(rounds, 'A');
       expect(result).toContain('1AC - PNT (2 occurrences)');
       expect(result).toContain('1AC - sci dip (1 occurrence)');
-      expect(result).toContain('Most Recent:');
+      expect(result).toContain('Most Recent: sci dip - Greenhill, Round 3');
     });
 
     test('extracts 2NR arguments for neg side', () => {
       const rounds = [
-        { tournament: 'Stanford', round: 'R1', report: '1ac DSM; 2nr WWF cp' },
-        { tournament: 'Berkeley', round: 'R2', report: '1ac PNT; 2nr was china soft' },
-        { tournament: 'TOC', round: 'R3', report: '1ac land trusts; 2nr was T' },
+        { tournament: 'Stanford', round: '1', report: '1ac DSM; 2nr WWF cp' },
+        { tournament: 'Berkeley', round: '2', report: '1ac PNT; 2nr was china soft' },
+        { tournament: 'TOC', round: '3', report: '1ac land trusts; 2nr was T' },
       ];
       const result = service.summarizeArguments(rounds, 'N');
       expect(result).toContain('2NR - WWF cp (1 occurrence)');
       expect(result).toContain('2NR - china soft (1 occurrence)');
       expect(result).toContain('2NR - T (1 occurrence)');
-      expect(result).toContain('Most Recent: T');
+      expect(result).toContain('Most Recent: T - TOC, Round 3');
     });
 
     test('handles "They ran" format', () => {
@@ -82,11 +82,33 @@ describe('LlmService', () => {
 
     test('deduplicates same arguments (case-insensitive)', () => {
       const rounds = [
-        { tournament: 'T1', round: 'R1', report: '1ac PNT' },
-        { tournament: 'T2', round: 'R2', report: '1ac pnt' },
+        { tournament: 'T1', round: '1', report: '1ac PNT' },
+        { tournament: 'T2', round: '2', report: '1ac pnt' },
       ];
       const result = service.summarizeArguments(rounds, 'A');
       expect(result).toContain('2 occurrences');
+    });
+
+    test('includes inline doc links when getDownloadUrl is provided', () => {
+      const rounds = [
+        { tournament: 'Stanford', round: '1', report: '1ac PNT; 2nr PTX', opensource: 'path/to/doc1.docx' },
+        { tournament: 'Berkeley', round: '2', report: '1ac PNT; 2nr T' },
+        { tournament: 'Greenhill', round: '3', report: '1ac sci dip; 2nr was K', opensource: 'path/to/doc3.docx' },
+      ];
+      const mockUrl = (path) => `https://dl.example.com/${path}`;
+      const result = service.summarizeArguments(rounds, 'A', mockUrl);
+      expect(result).toContain('1AC - PNT (2 occurrences) - [Docs](https://dl.example.com/path/to/doc1.docx)');
+      expect(result).toContain('1AC - sci dip (1 occurrence) - [Docs](https://dl.example.com/path/to/doc3.docx)');
+      expect(result).toContain('Most Recent: sci dip - Greenhill, Round 3');
+    });
+
+    test('omits doc link when no opensource field', () => {
+      const rounds = [
+        { tournament: 'Stanford', round: '1', report: '1ac PNT' },
+      ];
+      const mockUrl = (path) => `https://dl.example.com/${path}`;
+      const result = service.summarizeArguments(rounds, 'A', mockUrl);
+      expect(result).not.toContain('[Docs]');
     });
   });
 

@@ -588,20 +588,8 @@ class ClerkKentBot {
         ? await this.caselistService.lookupOpponent(opponentCode, opponentSide, opponentEntryNames)
         : null;
       if (caselistResult && caselistResult.rounds.length > 0) {
-        argumentSummary = this.llmService.summarizeWithFallback(caselistResult.rounds, opponentSide);
-
-        let docInfo = null;
-        if (opponentSide === 'A') {
-          // Opponent is AFF → find their most recent aff open source
-          docInfo = this.caselistService.getLatestAffDoc(caselistResult.rounds);
-        } else if (opponentSide === 'N') {
-          // Opponent is NEG → find their most recent neg vs our aff
-          const ourAff = this.store.getOurAff();
-          docInfo = this.caselistService.getNegVsAff(caselistResult.rounds, ourAff);
-          if (docInfo) {
-            console.log(`[Pairing] Found neg vs ${ourAff}: R${docInfo.round} ${docInfo.tournament} — 2NR: ${docInfo.strategy}`);
-          }
-        }
+        const downloadUrlFn = (path) => this.caselistService.getDownloadUrl(path);
+        argumentSummary = this.llmService.summarizeWithFallback(caselistResult.rounds, opponentSide, downloadUrlFn);
 
         opponentData = {
           schoolName: caselistResult.schoolName,
@@ -609,7 +597,6 @@ class ClerkKentBot {
           caselistUrl: caselistResult.caselistUrl,
           side: opponentSide === 'A' ? 'Aff' : 'Neg',
           argumentSummary,
-          docInfo,
         };
       } else {
         opponentData = {
@@ -618,7 +605,6 @@ class ClerkKentBot {
           caselistUrl: null,
           side: opponentSide ? (opponentSide === 'A' ? 'Aff' : 'Neg') : 'FLIP',
           argumentSummary: opponentSide ? argumentSummary : '_Side unknown (FLIP) — caselist lookup skipped._',
-          docInfo: null,
         };
       }
     }
