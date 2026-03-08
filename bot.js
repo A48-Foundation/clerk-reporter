@@ -61,6 +61,26 @@ class ClerkKentBot {
     // Channel override — no mention needed, just a message in the same channel
     if (this._pendingSession && !message.mentions.has(this.client.user)) {
       const text = message.content.trim();
+      // Detect all-team channel override: "all-team=#channel-name"
+      const allTeamMatch = text.match(/^all[- ]?team\s*=\s*(?:<#(\d+)>|#?([\w-]+))$/i);
+      if (allTeamMatch) {
+        const chId = allTeamMatch[1]; // Discord mention format
+        const chName = allTeamMatch[2]; // plain text format
+        let channelId = chId || null;
+        if (!channelId && chName) {
+          for (const [, guild] of this.client.guilds.cache) {
+            const found = guild.channels.cache.find(c => c.name.toLowerCase() === chName.toLowerCase());
+            if (found) { channelId = found.id; break; }
+          }
+        }
+        if (channelId) {
+          this._allTeamChannelId = channelId;
+          await message.reply(`✅ All-team report → <#${channelId}>`);
+        } else {
+          await message.reply(`⚠️ Channel **${chName}** not found.`);
+        }
+        return;
+      }
       if (/\w+=/.test(text)) {
         await this._handleChannelOverride(message, text);
         return;
@@ -102,7 +122,7 @@ class ClerkKentBot {
     }
 
     if (/^all[- ]?team\s+(report|channel)/i.test(lowerContent)) {
-      await this.handleSetAllTeamChannel(message, content);
+      await this.handleSetAllTeamChannel(message, message.content);
       return;
     }
 
@@ -244,8 +264,7 @@ class ClerkKentBot {
         .setDescription(
           lines.join('\n') + '\n\n' +
           'Click **Confirm** to start monitoring, or type overrides like `OC=#some-channel`.\n' +
-          'Use `@Clerk Kent add entry <code> #channel` to manually add entries.\n\n' +
-          '📊 **All-team report:** `@Clerk Kent all-team report #channel` to set a channel for round summaries.\n' +
+          '📊 **All-team report:** Type `all-team=#channel-name` to set a channel for round summaries.\n' +
           '👁️ **Watch:** `@Clerk Kent watch team <name>` or `watch judge <name>` to add non-team pairings.'
         )
         .setColor(0x5865f2);
