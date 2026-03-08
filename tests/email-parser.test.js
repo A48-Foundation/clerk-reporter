@@ -332,3 +332,113 @@ describe('isPairingEmail', () => {
     });
   });
 });
+
+// ─── _isCompletePairing ─────────────────────────────────────────
+
+describe('_isCompletePairing', () => {
+  test('returns true for complete Format A pairing', () => {
+    const parsed = EmailParser.parse(fixtures.formatA_stanford.input);
+    expect(EmailParser._isCompletePairing(parsed)).toBe(true);
+  });
+
+  test('returns true for complete Format B pairing', () => {
+    const parsed = EmailParser.parse(fixtures.formatB_westchester.input);
+    expect(EmailParser._isCompletePairing(parsed)).toBe(true);
+  });
+
+  test('returns false for empty body Format A', () => {
+    const parsed = EmailParser.parse(fixtures.edgeCase_emptyBody.input);
+    // Empty body: aff/neg teamCodes are null, no judges, no startTime
+    expect(EmailParser._isCompletePairing(parsed)).toBe(false);
+  });
+
+  test('returns false for null', () => {
+    expect(EmailParser._isCompletePairing(null)).toBe(false);
+  });
+
+  test('returns false for Format A missing judges', () => {
+    expect(EmailParser._isCompletePairing({
+      format: 'liveUpdate',
+      aff: { teamCode: 'Team A' },
+      neg: { teamCode: 'Team B' },
+      judges: [],
+      startTime: '10:00',
+    })).toBe(false);
+  });
+
+  test('returns false for Format A missing startTime', () => {
+    expect(EmailParser._isCompletePairing({
+      format: 'liveUpdate',
+      aff: { teamCode: 'Team A' },
+      neg: { teamCode: 'Team B' },
+      judges: [{ name: 'Judge' }],
+      startTime: null,
+    })).toBe(false);
+  });
+});
+
+// ─── parseWithFallback ──────────────────────────────────────────
+
+describe('parseWithFallback', () => {
+  test('returns regex result when complete (no LLM needed)', async () => {
+    const result = await EmailParser.parseWithFallback(fixtures.formatA_stanford.input, null);
+    expect(result).toEqual(fixtures.formatA_stanford.expectedParsed);
+  });
+
+  test('returns regex result for Format B without LLM', async () => {
+    const result = await EmailParser.parseWithFallback(fixtures.formatB_westchester.input, null);
+    expect(result).toEqual(fixtures.formatB_westchester.expectedParsed);
+  });
+
+  test('returns null for null email', async () => {
+    const result = await EmailParser.parseWithFallback(null, null);
+    expect(result).toBeNull();
+  });
+
+  test('returns null for empty body without LLM (no meaningful data)', async () => {
+    // Empty body has subject data (team code from subject) but no aff/neg/judges in body
+    const result = await EmailParser.parseWithFallback(fixtures.edgeCase_emptyBody.input, null);
+    // No teams in body, no judges, no start time → null
+    expect(result).toBeNull();
+  });
+
+  test('attempts LLM fallback when regex parse is incomplete', async () => {
+    const mockLlm = {
+      enabled: true,
+      model: 'gpt-4o-mini',
+      client: {
+        chat: {
+          completions: {
+            create: jest.fn().mockResolvedValue({
+              choices: [{
+                message: {
+                  content: JSON.stringify({
+                    format: 'liveUpdate',
+                    roundTitle: 'Round 3',
+                    startTime: '2:00 PM',
+                    room: '101',
+                    side: 'AFF',
+                    aff: { teamCode: 'Interlake OC', names: [] },
+                    neg: { teamCode: 'Coppell PK', names: [] },
+                    judges: [{ name: 'Test Judge', pronouns: null }],
+                  }),
+                },
+              }],
+            }),
+          },
+        },
+      },
+    };
+
+    // Construct an email that regex can't fully parse
+    const weirdEmail = {
+      subject: 'Some unusual format',
+      from: 'tourn@tabroom.com',
+      body: 'This is round 3, Interlake OC vs Coppell PK, judged by Test Judge at 2:00 PM in room 101',
+    };
+
+    const result = await EmailParser.parseWithFallback(weirdEmail, mockLlm);
+    expect(result).not.toBeNull();
+    expect(mockLlm.client.chat.completions.create).toHaveBeenCalled();
+  });
+});

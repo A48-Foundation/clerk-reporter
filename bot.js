@@ -1,4 +1,5 @@
-const { Client, GatewayIntentBits, EmbedBuilder, Events } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, Events,
+        ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const NotionService = require('./notion-service');
 const TournamentStore = require('./tournament-store');
 const TabroomScraper = require('./tabroom-scraper');
@@ -23,6 +24,7 @@ class ClerkKentBot {
     this.store = new TournamentStore();
     this.emailMonitor = null;
     this.channelMapper = null; // initialized after client is ready
+    this._pendingSession = null; // holds state between initiate and confirm button
     this.caselistService = new CaselistService();
     this.paradigmService = new ParadigmService();
     this.llmService = new LlmService();
@@ -40,6 +42,11 @@ class ClerkKentBot {
     this.client.on(Events.MessageCreate, async (message) => {
       if (message.author.bot) return;
       await this.handleMessage(message);
+    });
+
+    this.client.on(Events.InteractionCreate, async (interaction) => {
+      if (!interaction.isButton()) return;
+      await this.handleButtonInteraction(interaction);
     });
   }
 
@@ -73,6 +80,11 @@ class ClerkKentBot {
       return;
     }
 
+    if (lowerContent.startsWith('add entry ')) {
+      await this.handleAddEntry(message, content.slice('add entry '.length).trim());
+      return;
+    }
+
     if (lowerContent.startsWith('track ')) {
       await this.handleTrack(message, content.slice(6).trim());
       return;
@@ -100,14 +112,15 @@ class ClerkKentBot {
   // ─── PAIRINGS PIPELINE COMMANDS ─────────────────────────────────
 
   /**
-   * Handle: @Clerk Kent initiate pairings reports <tabroom_url>
-   * Scrapes initial pairings, maps teams to channels, starts email monitor.
+   * Handle: @Clerk Kent initiate pairings reports <tabroom_entries_url>
+   * Scrapes tournament entries, maps teams to channels, shows confirmation buttons.
    */
   async handleInitiatePairings(message, url) {
     if (!url) {
       await message.reply(
-        '**Usage:** `@Clerk Kent initiate pairings reports <tabroom_pairings_url>`\n' +
-        '**Example:** `@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/postings/round.mhtml?tourn_id=36452&round_id=1503711`'
+        '**Usage:** `@Clerk Kent initiate pairings reports <tabroom_entries_url>`\n' +
+        '**Example:** `@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080`\n\n' +
+        'Provide a link to the tournament entries page (with `event_id` for a specific event, or just `tourn_id` to pick an event).'
       );
       return;
     }
@@ -115,35 +128,41 @@ class ClerkKentBot {
     try {
       await message.channel.sendTyping();
 
-      // Parse tournament ID from URL
-      let tournId, roundId;
-      if (url.includes('round_id')) {
-        const parsed = TabroomScraper.parseRoundUrl(url);
-        tournId = parsed.tournId;
-        roundId = parsed.roundId;
-      } else {
-        const parsed = new URL(url);
-        tournId = parsed.searchParams.get('tourn_id');
-      }
+      // Parse URL for tourn_id and optional event_id
+      const parsed = TabroomScraper.parseUrl(url);
+      const tournId = parsed.tournId;
+      let eventId = parsed.eventId;
 
       if (!tournId) {
         await message.reply('⚠️ Could not extract tournament ID from that URL. Make sure it\'s a valid Tabroom URL.');
         return;
       }
 
-      // Scrape current pairings
-      if (!roundId) {
-        const rounds = await TabroomScraper.getRounds(tournId);
-        if (rounds.length === 0) {
-          await message.reply('⚠️ No rounds found for this tournament.');
+      // Scrape entries
+      let result = await TabroomScraper.scrapeEntries(tournId, eventId);
+
+      // If no eventId, show event picker
+      if (!eventId && result.events.length > 0) {
+        // Auto-select policy events if there's only one, otherwise show list
+        const policyEvents = result.events.filter(e =>
+          /policy|cx/i.test(e.name)
+        );
+
+        if (policyEvents.length === 1) {
+          eventId = policyEvents[0].eventId;
+          result = await TabroomScraper.scrapeEntries(tournId, eventId);
+        } else {
+          const eventList = result.events.map((e, i) => `**${i + 1}.** ${e.name}`).join('\n');
+          await message.reply(
+            `📋 **${result.tournamentName}** has multiple events:\n\n${eventList}\n\n` +
+            `Please re-run with a specific event URL (include \`event_id\` parameter).`
+          );
           return;
         }
-        roundId = rounds[rounds.length - 1].roundId;
       }
 
-      const pairings = await TabroomScraper.scrapePairings(tournId, roundId);
-      if (pairings.length === 0) {
-        await message.reply('⚠️ No pairings found for this round yet.');
+      if (result.entries.length === 0) {
+        await message.reply('⚠️ No entries found for this event.');
         return;
       }
 
@@ -152,34 +171,129 @@ class ClerkKentBot {
         .split(',')
         .map(s => s.trim().toLowerCase());
 
-      const ourTeamCodes = [];
-      for (const p of pairings) {
-        for (const code of [p.aff, p.neg]) {
-          if (code && schoolNames.some(s => code.toLowerCase().startsWith(s))) {
-            ourTeamCodes.push(code);
-          }
-        }
-      }
+      const ourEntries = result.entries.filter(e =>
+        schoolNames.some(s => e.code.toLowerCase().startsWith(s))
+      );
 
-      if (ourTeamCodes.length === 0) {
-        await message.reply(`⚠️ No teams matching school names (${schoolNames.join(', ')}) found in pairings.`);
+      if (ourEntries.length === 0) {
+        await message.reply(
+          `⚠️ No teams matching school names (${schoolNames.join(', ')}) found in entries.\n` +
+          `You can manually add entries with \`@Clerk Kent add entry <team_code> #channel\`.`
+        );
         return;
       }
 
-      // Auto-map teams to Discord channels and confirm
-      const mapping = await this.channelMapper.autoMap(ourTeamCodes);
-      const confirmed = await this.channelMapper.confirmMapping(message.channel, mapping);
+      // Auto-map teams to Discord channels
+      const teamCodes = ourEntries.map(e => e.code);
+      const mapping = await this.channelMapper.autoMap(teamCodes);
+
+      // Build confirmation embed with buttons
+      const lines = Object.entries(mapping).map(([team, info]) => {
+        if (info.confidence === 'auto') {
+          return `✅ **${team}** → #${info.channelName}`;
+        }
+        return `❌ **${team}** → _unmatched_`;
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📋 ${result.tournamentName} — Channel Mapping`)
+        .setDescription(
+          lines.join('\n') + '\n\n' +
+          'Click **Confirm** to start monitoring, or type overrides like `OC=#some-channel`.\n' +
+          'Use `@Clerk Kent add entry <code> #channel` to manually add entries.'
+        )
+        .setColor(0x5865f2);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('pairings_confirm')
+          .setLabel('✅ Confirm & Start')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId('pairings_cancel')
+          .setLabel('Cancel')
+          .setStyle(ButtonStyle.Secondary),
+      );
+
+      await message.reply({ embeds: [embed], components: [row] });
+
+      // Store pending session for the button handler
+      this._pendingSession = {
+        tournId,
+        tournamentUrl: url,
+        tournamentName: result.tournamentName,
+        mapping,
+        channelId: message.channel.id,
+        userId: message.author.id,
+      };
+
+      // Also listen for text override messages for 60 seconds
+      const overrideFilter = (msg) =>
+        msg.author.id === message.author.id && !msg.author.bot &&
+        (msg.content.includes('=') || msg.content.toLowerCase().includes('add entry'));
+
+      const collector = message.channel.createMessageCollector({
+        filter: overrideFilter,
+        time: 60000,
+      });
+
+      collector.on('collect', (msg) => {
+        if (!this._pendingSession) return;
+        const overridePattern = /(\w+)=(?:#?)([\w-]+)/g;
+        let match;
+        while ((match = overridePattern.exec(msg.content)) !== null) {
+          const [, suffix, channelRef] = match;
+          for (const team of Object.keys(this._pendingSession.mapping)) {
+            const teamSuffix = this.channelMapper.extractTeamSuffix(team);
+            if (teamSuffix && teamSuffix.toLowerCase() === suffix.toLowerCase()) {
+              for (const [, guild] of this.client.guilds.cache) {
+                const found = guild.channels.cache.find(
+                  c => c.name.toLowerCase() === channelRef.toLowerCase()
+                );
+                if (found) {
+                  this._pendingSession.mapping[team] = {
+                    channelId: found.id,
+                    channelName: found.name,
+                    confidence: 'manual',
+                  };
+                  msg.react('✅');
+                  break;
+                }
+              }
+            }
+          }
+        }
+      });
+
+    } catch (err) {
+      console.error('Error in initiate pairings command:', err);
+      await message.reply('⚠️ Something went wrong while setting up pairings. Check the URL and try again.');
+    }
+  }
+
+  /**
+   * Handle Discord button interactions.
+   */
+  async handleButtonInteraction(interaction) {
+    if (interaction.customId === 'pairings_confirm') {
+      if (!this._pendingSession) {
+        await interaction.reply({ content: '⚠️ No pending session to confirm.', ephemeral: true });
+        return;
+      }
+
+      const session = this._pendingSession;
+      this._pendingSession = null;
 
       // Build channelMappings as { teamCode: channelId }
       const channelMappings = {};
-      for (const [team, info] of Object.entries(confirmed)) {
+      for (const [team, info] of Object.entries(session.mapping)) {
         if (info.channelId) {
           channelMappings[team] = info.channelId;
         }
       }
 
       // Store the active session
-      this.store.setActiveSession(tournId, url, channelMappings);
+      this.store.setActiveSession(session.tournId, session.tournamentUrl, channelMappings);
 
       // Start email monitor
       if (this.emailMonitor) {
@@ -193,21 +307,37 @@ class ClerkKentBot {
 
       this.emailMonitor.on('pairing', (eventData) => this.handlePairingEvent(eventData));
       this.emailMonitor.on('error', (err) => console.error('[EmailMonitor] Error:', err.message));
+      this.emailMonitor.on('connected', () => console.log('📧 Email monitor connected'));
       this.emailMonitor.start();
 
       const teamList = Object.entries(channelMappings)
         .map(([team, chId]) => `• **${team}** → <#${chId}>`)
         .join('\n');
 
-      await message.reply(
-        `✅ **Pairings pipeline activated** for tournament **${tournId}**!\n\n` +
-        `${teamList}\n\n` +
-        `📧 Email monitor started — pairing reports will be sent automatically.\n` +
-        `Use \`@Clerk Kent stop pairings\` to stop.`
-      );
-    } catch (err) {
-      console.error('Error in initiate pairings command:', err);
-      await message.reply('⚠️ Something went wrong while setting up pairings. Check the URL and try again.');
+      await interaction.update({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(`✅ ${session.tournamentName} — Pairings Pipeline Active`)
+            .setDescription(
+              `${teamList}\n\n` +
+              `📧 Email monitor started — pairing reports will be sent automatically.\n` +
+              `Use \`@Clerk Kent stop pairings\` to stop.`
+            )
+            .setColor(0x2ecc71)
+        ],
+        components: [],
+      });
+    } else if (interaction.customId === 'pairings_cancel') {
+      this._pendingSession = null;
+      await interaction.update({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('❌ Pairings Pipeline Cancelled')
+            .setDescription('Setup cancelled. Run the command again to restart.')
+            .setColor(0xe74c3c)
+        ],
+        components: [],
+      });
     }
   }
 
@@ -225,14 +355,59 @@ class ClerkKentBot {
   }
 
   /**
+   * Handle: @Clerk Kent add entry <team_code> #channel
+   * Manually adds a team entry to the active session's channel mappings.
+   */
+  async handleAddEntry(message, args) {
+    const session = this.store.getActiveSession();
+    if (!session) {
+      await message.reply('⚠️ No active pairings session. Use `initiate pairings reports` first.');
+      return;
+    }
+
+    // Parse: team code and optional #channel mention
+    const channelMention = args.match(/<#(\d+)>/);
+    let teamCode, channelId;
+
+    if (channelMention) {
+      teamCode = args.replace(/<#\d+>/, '').trim();
+      channelId = channelMention[1];
+    } else {
+      // Try "TeamCode #channel-name" format
+      const parts = args.split(/\s+#/);
+      teamCode = parts[0].trim();
+      if (parts[1]) {
+        const channelName = parts[1].trim();
+        for (const [, guild] of this.client.guilds.cache) {
+          const found = guild.channels.cache.find(c => c.name.toLowerCase() === channelName.toLowerCase());
+          if (found) { channelId = found.id; break; }
+        }
+      }
+    }
+
+    if (!teamCode) {
+      await message.reply('**Usage:** `@Clerk Kent add entry Interlake CG #cg-tournaments`');
+      return;
+    }
+
+    // Default to current channel if no channel specified
+    if (!channelId) {
+      channelId = message.channel.id;
+    }
+
+    this.store.updateChannelMapping(teamCode, channelId);
+    await message.reply(`✅ Added **${teamCode}** → <#${channelId}> to pairings tracking.`);
+  }
+
+  /**
    * Handle an incoming pairing event from the EmailMonitor.
-   * Supports both Format A (liveUpdate) and Format B (assignments).
+   * Uses parseWithFallback (regex first, then LLM) and validates required fields.
    * Routes each team's pairing to _processSinglePairing().
    */
   async handlePairingEvent(eventData) {
     try {
-      const { parsed, uid } = eventData;
-      if (!parsed) return;
+      const { uid, raw } = eventData;
+      let { parsed } = eventData;
 
       const session = this.store.getActiveSession();
       if (!session) return;
@@ -240,6 +415,17 @@ class ClerkKentBot {
       // Check if already processed
       if (this.store.isEmailProcessed(uid)) return;
       this.store.addProcessedEmailUid(uid);
+
+      // If the initial regex parse was incomplete, try LLM fallback
+      if (!parsed || !EmailParser._isCompletePairing(parsed)) {
+        if (raw) {
+          parsed = await EmailParser.parseWithFallback(raw, this.llmService);
+        }
+        if (!parsed) {
+          console.log(`[Pairing] Email ${uid} skipped — incomplete pairing data`);
+          return;
+        }
+      }
 
       const schoolNames = (process.env.SCHOOL_NAMES || 'Interlake,Cuttlefish')
         .split(',')
@@ -754,19 +940,19 @@ class ClerkKentBot {
       .setDescription(
         '**Judge Lookup:**\n' +
         '`@Clerk Kent [Judge Name]` — Look up a judge\n\n' +
+        '**Automated Pairings Pipeline:**\n' +
+        '`@Clerk Kent initiate pairings reports <entries_url>` — Start auto reports via email\n' +
+        '`@Clerk Kent add entry <team_code> #channel` — Manually add a team to track\n' +
+        '`@Clerk Kent stop pairings` — Stop the automated pipeline\n\n' +
         '**Tournament Tracking:**\n' +
         '`@Clerk Kent track <tabroom_url> <team_code>` — Register a team to track\n' +
         '`@Clerk Kent report <code>` — Get latest pairings & judge info for a team\n' +
         '`@Clerk Kent untrack <team_code>` — Stop tracking a team\n' +
         '`@Clerk Kent tournaments` — Show tracked tournaments\n\n' +
-        '**Automated Pairings Pipeline:**\n' +
-        '`@Clerk Kent initiate pairings reports <tabroom_url>` — Start auto reports via email\n' +
-        '`@Clerk Kent stop pairings` — Stop the automated pipeline\n\n' +
         '**Examples:**\n' +
         '`@Clerk Kent Smith` — Judge lookup\n' +
-        '`@Clerk Kent track https://www.tabroom.com/...?tourn_id=36452&round_id=123 Interlake SW`\n' +
-        '`@Clerk Kent report SW` — Get judge info for Interlake SW\'s latest round\n' +
-        '`@Clerk Kent initiate pairings reports https://www.tabroom.com/...?tourn_id=36452&round_id=123`'
+        '`@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080`\n' +
+        '`@Clerk Kent add entry Interlake CG #cg-tournaments`'
       );
   }
 

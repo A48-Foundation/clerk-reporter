@@ -1,9 +1,78 @@
 const https = require('https');
+const fetch = require('node-fetch');
 const cheerio = require('cheerio');
 
+const BASE_URL = 'https://www.tabroom.com';
+
 class TabroomScraper {
+  // Shared authenticated cookies (set via login())
+  static _cookies = '';
+  static _loggedIn = false;
+
   /**
-   * Fetch HTML from a URL.
+   * Authenticate with Tabroom. Required for entries pages.
+   */
+  static async login() {
+    if (this._loggedIn) return;
+
+    const email = process.env.TABROOM_EMAIL;
+    const password = process.env.TABROOM_PASSWORD;
+    if (!email || !password) throw new Error('TABROOM_EMAIL and TABROOM_PASSWORD required');
+
+    // GET login page for hidden fields
+    const loginPage = await fetch(`${BASE_URL}/user/login/login.mhtml`, { redirect: 'manual' });
+    this._mergeCookies(loginPage);
+
+    const html = await loginPage.text();
+    const $ = cheerio.load(html);
+    const salt = $('input[name=salt]').val() || '';
+    const sha = $('input[name=sha]').val() || '';
+
+    const params = new URLSearchParams();
+    params.append('username', email);
+    params.append('password', password);
+    if (salt) params.append('salt', salt);
+    if (sha) params.append('sha', sha);
+
+    const loginRes = await fetch(`${BASE_URL}/user/login/login_save.mhtml`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: this._cookies },
+      body: params.toString(),
+      redirect: 'manual',
+    });
+    this._mergeCookies(loginRes);
+
+    // Follow redirect
+    const loc = loginRes.headers.get('location');
+    if (loc) {
+      const redir = loc.startsWith('http') ? loc : `${BASE_URL}${loc}`;
+      const r = await fetch(redir, { headers: { Cookie: this._cookies }, redirect: 'manual' });
+      this._mergeCookies(r);
+    }
+
+    this._loggedIn = true;
+  }
+
+  static _mergeCookies(res) {
+    const incoming = (res.headers.raw()['set-cookie'] || []).map(c => c.split(';')[0]);
+    const map = {};
+    for (const c of this._cookies.split('; ').filter(Boolean)) { const [k] = c.split('='); map[k] = c; }
+    for (const c of incoming) { const [k] = c.split('='); map[k] = c; }
+    this._cookies = Object.values(map).join('; ');
+  }
+
+  /**
+   * Authenticated GET — uses stored cookies from login().
+   */
+  static async authenticatedFetch(url) {
+    if (!this._loggedIn) await this.login();
+    const res = await fetch(url, { headers: { Cookie: this._cookies }, redirect: 'follow' });
+    this._mergeCookies(res);
+    return res.text();
+  }
+
+  /**
+   * Fetch HTML from a URL (unauthenticated — for public pages).
    */
   static fetch(url) {
     return new Promise((resolve, reject) => {
@@ -19,6 +88,21 @@ class TabroomScraper {
     });
   }
 
+  // ─── URL parsing ───────────────────────────────────────────────
+
+  /**
+   * Parse a Tabroom URL and extract tourn_id, event_id, round_id.
+   * Works with entries, pairings, and fields URLs.
+   */
+  static parseUrl(url) {
+    const parsed = new URL(url);
+    return {
+      tournId: parsed.searchParams.get('tourn_id'),
+      eventId: parsed.searchParams.get('event_id'),
+      roundId: parsed.searchParams.get('round_id'),
+    };
+  }
+
   /**
    * Parse a Tabroom pairings round URL and extract tourn_id and round_id.
    * Accepts URLs like:
@@ -30,6 +114,68 @@ class TabroomScraper {
       tournId: parsed.searchParams.get('tourn_id'),
       roundId: parsed.searchParams.get('round_id'),
     };
+  }
+
+  // ─── Entries scraping ──────────────────────────────────────────
+
+  /**
+   * Scrape tournament entries from a Tabroom fields/entries page.
+   * Requires authentication.
+   *
+   * If eventId is provided, scrapes that specific event.
+   * If only tournId, scrapes the fields index to find events, then lets the caller pick.
+   *
+   * @param {string} tournId
+   * @param {string} [eventId]
+   * @returns {{ tournamentName: string, events: Array, entries: Array<{school, location, entry, code}> }}
+   */
+  static async scrapeEntries(tournId, eventId) {
+    if (!eventId) {
+      // Scrape the fields index to get available events
+      const html = await this.authenticatedFetch(
+        `${BASE_URL}/index/tourn/fields/entry.mhtml?tourn_id=${tournId}`
+      );
+      const $ = cheerio.load(html);
+      const tournamentName = $('h2').first().text().trim() || `Tournament ${tournId}`;
+
+      const events = [];
+      $('a[href*="event_id"]').each((_, el) => {
+        const href = $(el).attr('href') || '';
+        const text = $(el).text().trim();
+        try {
+          const full = href.startsWith('http') ? href : `${BASE_URL}${href}`;
+          const parsed = new URL(full.replace(/&amp;/g, '&'));
+          const evId = parsed.searchParams.get('event_id');
+          if (evId && text) events.push({ eventId: evId, name: text, url: parsed.toString() });
+        } catch (_) {}
+      });
+
+      return { tournamentName, events, entries: [] };
+    }
+
+    // Scrape specific event entries
+    const html = await this.authenticatedFetch(
+      `${BASE_URL}/index/tourn/fields.mhtml?tourn_id=${tournId}&event_id=${eventId}`
+    );
+    const $ = cheerio.load(html);
+    const tournamentName = $('h2').first().text().trim() || `Tournament ${tournId}`;
+
+    const entries = [];
+    $('tr').each((_, row) => {
+      const cells = $(row).find('td');
+      if (cells.length < 4) return;
+
+      const school = $(cells[0]).text().trim();
+      const location = $(cells[1]).text().trim();
+      const entry = $(cells[2]).text().trim();
+      const code = $(cells[3]).text().trim();
+
+      if (school && code && code !== 'Code') {
+        entries.push({ school, location, entry, code });
+      }
+    });
+
+    return { tournamentName, events: [], entries };
   }
 
   /**
