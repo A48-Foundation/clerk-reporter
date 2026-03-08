@@ -51,7 +51,7 @@ describe('ReportBuilder', () => {
       );
 
       // Our team (Interlake OC) should be bold green
-      expect(fieldMap['Aff'].value).toBe('**🟢 Interlake OC**');
+      expect(fieldMap['Aff'].value).toBe('**Interlake OC**');
       expect(fieldMap['Neg'].value).toBe('Coppell PK');
       expect(fieldMap['Room'].value).toBe('NSDA Section 18');
       expect(fieldMap['Start Time'].value).toBe('5:30 PST');
@@ -77,7 +77,7 @@ describe('ReportBuilder', () => {
       expect(fieldMap['Room'].value).toBe('N/A');
       expect(fieldMap['Our Side'].value).toBe('FLIP');
       // Our team on aff side should still be highlighted
-      expect(fieldMap['Aff'].value).toBe('**🟢 Cuttlefish WS**');
+      expect(fieldMap['Aff'].value).toBe('**Cuttlefish WS**');
       expect(fieldMap['Neg'].value).toBe('Reagan FP');
     });
 

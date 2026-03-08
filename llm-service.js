@@ -108,11 +108,16 @@ class LlmService {
     }
 
     const systemPrompt = [
-      'You are a debate assistant. Summarize the following judge paradigm in 3-5 sentences.',
-      'Focus on: their overall judging philosophy, preferences regarding speed/delivery,',
-      'stance on kritiks (K) vs policy arguments, and any strong biases or auto-rejects.',
-      'Be direct and useful for a debater prepping for a round.',
-    ].join(' ');
+      'Summarize this judge paradigm as concise bullet points. No transition words, no filler.',
+      'Only include bullets that the paradigm clearly supports. Use this checklist:',
+      '• K stance — good/bad for kritiks? Will they vote on framework?',
+      '• T stance — how do they evaluate topicality? Good for T vs critical affs?',
+      '• CP/DA — any strong preferences on counterplans or disadvantages?',
+      '• Speed — do they dislike speed or have a cap?',
+      '• Experience — years judging, coaching background, debate style they competed in',
+      '• Strong indicators — any auto-rejects, hard preferences, or dealbreakers',
+      'Skip any category with no clear signal. Max 6 bullets. Format: "• Topic: detail"',
+    ].join('\n');
 
     try {
       const response = await this.client.chat.completions.create({
@@ -121,8 +126,8 @@ class LlmService {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: philosophyText },
         ],
-        temperature: 0.3,
-        max_tokens: 300,
+        temperature: 0.15,
+        max_tokens: 250,
       });
 
       return response.choices[0]?.message?.content?.trim() || this._truncateParadigm(philosophyText);

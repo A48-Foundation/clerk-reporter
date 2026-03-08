@@ -12,9 +12,9 @@ class ReportBuilder {
       teamCode,
     } = pairingData || {};
 
-    const formatTeam = (code, isSide) => {
+    const formatTeam = (code) => {
       if (!code) return 'N/A';
-      return code === teamCode ? `**🟢 ${code}**` : code;
+      return code === teamCode ? `**${code}**` : code;
     };
 
     return new EmbedBuilder()
