@@ -17,6 +17,11 @@ class ReportBuilder {
       teamCode: oppCode,
       caselistUrl,
       argumentSummary,
+      // FLIP fields
+      affCaselistUrl,
+      negCaselistUrl,
+      affArgumentSummary,
+      negArgumentSummary,
     } = opponentData || {};
 
     const formatTeam = (code) => {
@@ -39,7 +44,21 @@ class ReportBuilder {
       { name: 'Start', value: startTime || 'N/A', inline: true },
     ];
 
-    if (argumentSummary) {
+    if (opponentData && opponentData.side === 'FLIP') {
+      // FLIP: show both aff and neg summaries
+      const affOppDisplay = affCaselistUrl ? `[${opponentName}](${affCaselistUrl})` : opponentName;
+      fields.push({
+        name: `🐟 FLIP v. ${opponentName} — Their Aff`,
+        value: `${affOppDisplay}\n${affArgumentSummary || '_No data_'}`,
+        inline: false,
+      });
+      const negOppDisplay = negCaselistUrl ? `[${opponentName}](${negCaselistUrl})` : opponentName;
+      fields.push({
+        name: `🐟 FLIP v. ${opponentName} — Their Neg`,
+        value: `${negOppDisplay}\n${negArgumentSummary || '_No data_'}`,
+        inline: false,
+      });
+    } else if (argumentSummary) {
       const oppDisplay = caselistUrl ? `[${opponentName}](${caselistUrl})` : opponentName;
       fields.push({
         name: `🐟 ${ourSide} v. ${opponentName} (${opponentSide})`,

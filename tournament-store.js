@@ -55,6 +55,25 @@ class TournamentStore {
     this.save();
   }
 
+  getSchoolNames() {
+    return this.settings.schoolNames
+      || (process.env.SCHOOL_NAMES || 'Interlake,Cuttlefish').split(',').map(s => s.trim());
+  }
+
+  setSchoolNames(names) {
+    this.settings.schoolNames = names;
+    this.save();
+  }
+
+  getCaselistSlug() {
+    return this.settings.caselistSlug || process.env.CASELIST_SLUG || 'hspolicy25';
+  }
+
+  setCaselistSlug(slug) {
+    this.settings.caselistSlug = slug;
+    this.save();
+  }
+
   /**
    * Add or update a tournament tracking configuration.
    * @param {string} tournId - Tabroom tournament ID

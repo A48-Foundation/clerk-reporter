@@ -130,6 +130,32 @@ class ClerkKentBot {
       return;
     }
 
+    // Set school names: "set schools Dartmouth, Interlake"
+    if (/^set\s+schools?\s+/i.test(lowerContent)) {
+      const raw = content.replace(/^set\s+schools?\s+/i, '').trim();
+      if (raw) {
+        const names = raw.split(/,\s*/).map(s => s.trim()).filter(Boolean);
+        this.store.setSchoolNames(names);
+        await message.reply(`✅ Tracked schools set to: **${names.join(', ')}**`);
+      } else {
+        const current = this.store.getSchoolNames().join(', ');
+        await message.reply(`ℹ️ Current schools: **${current}**\nUsage: \`@Clerk Kent set schools School1, School2\``);
+      }
+      return;
+    }
+
+    // Set caselist: "set caselist ndtceda25" or "set caselist hspolicy25"
+    if (/^set\s+caselist\s+/i.test(lowerContent)) {
+      const slug = content.replace(/^set\s+caselist\s+/i, '').trim();
+      if (slug) {
+        this.store.setCaselistSlug(slug);
+        await message.reply(`✅ Caselist set to **${slug}**`);
+      } else {
+        await message.reply(`ℹ️ Current caselist: **${this.store.getCaselistSlug()}**\nUsage: \`@Clerk Kent set caselist ndtceda25\``);
+      }
+      return;
+    }
+
     // Default: judge lookup
     await this.handleJudgeLookup(message, content);
   }
@@ -192,8 +218,7 @@ class ClerkKentBot {
       }
 
       // Filter for our school's teams
-      const schoolNames = (process.env.SCHOOL_NAMES || 'Interlake,Cuttlefish')
-        .split(',')
+      const schoolNames = this.store.getSchoolNames()
         .map(s => s.trim().toLowerCase());
 
       const ourEntries = result.entries.filter(e =>
@@ -224,15 +249,19 @@ class ClerkKentBot {
         .setTitle(`📋 ${result.tournamentName} — Channel Mapping`)
         .setDescription(
           lines.join('\n') + '\n\n' +
-          'Type overrides like `OC=#some-channel` or click **Confirm & Start** when ready.'
+          'Type overrides like `OC=#some-channel`, then select your **caselist** to start.'
         )
         .setColor(0x5865f2);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId('pairings_confirm')
-          .setLabel('✅ Confirm & Start')
-          .setStyle(ButtonStyle.Success),
+          .setCustomId('pairings_hs')
+          .setLabel('🏫 HS Policy')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId('pairings_college')
+          .setLabel('🎓 College NDT/CEDA')
+          .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
           .setCustomId('pairings_cancel')
           .setLabel('Cancel')
@@ -277,15 +306,19 @@ class ClerkKentBot {
       .setTitle(`📋 ${session.tournamentName} — Channel Mapping`)
       .setDescription(
         lines.join('\n') + '\n\n' +
-        'Type overrides like `OC=#some-channel` or click **Confirm & Start** when ready.'
+        'Type overrides like `OC=#some-channel`, then select your **caselist** to start.'
       )
       .setColor(0x5865f2);
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('pairings_confirm')
-        .setLabel('✅ Confirm & Start')
-        .setStyle(ButtonStyle.Success),
+        .setCustomId('pairings_hs')
+        .setLabel('🏫 HS Policy')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('pairings_college')
+        .setLabel('🎓 College NDT/CEDA')
+        .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('pairings_cancel')
         .setLabel('Cancel')
@@ -358,11 +391,14 @@ class ClerkKentBot {
    * Handle Discord button interactions.
    */
   async handleButtonInteraction(interaction) {
-    if (interaction.customId === 'pairings_confirm') {
+    if (interaction.customId === 'pairings_hs' || interaction.customId === 'pairings_college') {
       if (!this._pendingSession) {
         await interaction.reply({ content: '⚠️ No pending session to confirm.', ephemeral: true });
         return;
       }
+
+      const caselistSlug = interaction.customId === 'pairings_college' ? 'ndtceda25' : 'hspolicy25';
+      const caselistLabel = interaction.customId === 'pairings_college' ? 'College NDT/CEDA' : 'HS Policy';
 
       const session = this._pendingSession;
       this._pendingSession = null;
@@ -375,7 +411,8 @@ class ClerkKentBot {
         }
       }
 
-      // Store the active session (including allEntries for opponent name lookups)
+      // Store caselist choice persistently and in the active session
+      this.store.setCaselistSlug(caselistSlug);
       this.store.setActiveSession(session.tournId, session.tournamentUrl, channelMappings, session.allEntries);
 
       // Start email monitor
@@ -403,6 +440,7 @@ class ClerkKentBot {
             .setTitle(`✅ ${session.tournamentName} — Pairings Pipeline Active`)
             .setDescription(
               `${teamList}\n\n` +
+              `📑 Caselist: **${caselistLabel}** (\`${caselistSlug}\`)\n` +
               `📧 Email monitor started — pairing reports will be sent automatically.\n` +
               `Use \`@Clerk Kent stop pairings\` to stop.`
             )
@@ -525,8 +563,7 @@ class ClerkKentBot {
 
       console.log(`[handlePairingEvent] Parsed format: ${parsed.format}, round: ${parsed.roundTitle}`);
 
-      const schoolNames = (process.env.SCHOOL_NAMES || 'Interlake,Cuttlefish')
-        .split(',')
+      const schoolNames = this.store.getSchoolNames()
         .map(s => s.trim().toLowerCase());
 
       if (parsed.format === 'assignments') {
@@ -618,6 +655,8 @@ class ClerkKentBot {
 
     await channel.sendTyping();
 
+    const caselistSlug = this.store.getCaselistSlug();
+
     // Look up opponent on caselist using entry names from Tabroom
     let opponentData = null;
     let argumentSummary = '_No caselist data found._';
@@ -627,28 +666,69 @@ class ClerkKentBot {
         console.log(`[Pairing] Opponent ${opponentCode} entry names: "${opponentEntryNames}"`);
       }
 
-      const caselistResult = opponentSide
-        ? await this.caselistService.lookupOpponent(opponentCode, opponentSide, opponentEntryNames)
-        : null;
-      if (caselistResult && caselistResult.rounds.length > 0) {
+      if (opponentSide) {
+        // Known side: single lookup
+        const caselistResult = await this.caselistService.lookupOpponent(opponentCode, opponentSide, opponentEntryNames, caselistSlug);
+        if (caselistResult && caselistResult.rounds.length > 0) {
+          const downloadUrlFn = (path) => this.caselistService.getDownloadUrl(path);
+          const negContext = opponentSide === 'N' ? { ourAff: this.store.getOurAff() } : null;
+          argumentSummary = this.llmService.summarizeWithFallback(caselistResult.rounds, opponentSide, downloadUrlFn, negContext);
+
+          opponentData = {
+            schoolName: caselistResult.schoolName,
+            teamCode: caselistResult.teamCode,
+            caselistUrl: caselistResult.caselistUrl,
+            side: opponentSide === 'A' ? 'Aff' : 'Neg',
+            argumentSummary,
+          };
+        } else {
+          opponentData = {
+            schoolName: opponentCode,
+            teamCode: '',
+            caselistUrl: null,
+            side: opponentSide === 'A' ? 'Aff' : 'Neg',
+            argumentSummary,
+          };
+        }
+      } else {
+        // FLIP: look up both aff and neg sides
+        const [affResult, negResult] = await Promise.all([
+          this.caselistService.lookupOpponent(opponentCode, 'A', opponentEntryNames, caselistSlug),
+          this.caselistService.lookupOpponent(opponentCode, 'N', opponentEntryNames, caselistSlug),
+        ]);
+
         const downloadUrlFn = (path) => this.caselistService.getDownloadUrl(path);
-        const negContext = opponentSide === 'N' ? { ourAff: this.store.getOurAff() } : null;
-        argumentSummary = this.llmService.summarizeWithFallback(caselistResult.rounds, opponentSide, downloadUrlFn, negContext);
+        let affSummary = '_No caselist data found._';
+        let negSummary = '_No caselist data found._';
+        let affUrl = null;
+        let negUrl = null;
+        let schoolName = opponentCode;
+        let teamCode = '';
+
+        if (affResult && affResult.rounds.length > 0) {
+          affSummary = this.llmService.summarizeWithFallback(affResult.rounds, 'A', downloadUrlFn);
+          affUrl = affResult.caselistUrl;
+          schoolName = affResult.schoolName;
+          teamCode = affResult.teamCode;
+        }
+        if (negResult && negResult.rounds.length > 0) {
+          const negContext = { ourAff: this.store.getOurAff() };
+          negSummary = this.llmService.summarizeWithFallback(negResult.rounds, 'N', downloadUrlFn, negContext);
+          negUrl = negResult.caselistUrl;
+          if (!teamCode) {
+            schoolName = negResult.schoolName;
+            teamCode = negResult.teamCode;
+          }
+        }
 
         opponentData = {
-          schoolName: caselistResult.schoolName,
-          teamCode: caselistResult.teamCode,
-          caselistUrl: caselistResult.caselistUrl,
-          side: opponentSide === 'A' ? 'Aff' : 'Neg',
-          argumentSummary,
-        };
-      } else {
-        opponentData = {
-          schoolName: opponentCode,
-          teamCode: '',
-          caselistUrl: null,
-          side: opponentSide ? (opponentSide === 'A' ? 'Aff' : 'Neg') : 'FLIP',
-          argumentSummary: opponentSide ? argumentSummary : '_Side unknown (FLIP) — caselist lookup skipped._',
+          schoolName,
+          teamCode,
+          side: 'FLIP',
+          affCaselistUrl: affUrl,
+          negCaselistUrl: negUrl,
+          affArgumentSummary: affSummary,
+          negArgumentSummary: negSummary,
         };
       }
     }
@@ -1058,6 +1138,10 @@ class ClerkKentBot {
         '`@Clerk Kent initiate pairings reports <entries_url>` — Start auto reports via email\n' +
         '`@Clerk Kent add entry <team_code> #channel` — Manually add a team to track\n' +
         '`@Clerk Kent stop pairings` — Stop the automated pipeline\n\n' +
+        '**Settings:**\n' +
+        '`@Clerk Kent set schools School1, School2` — Set tracked school names\n' +
+        '`@Clerk Kent set caselist ndtceda25` — Set caselist (hspolicy25 or ndtceda25)\n' +
+        '`@Clerk Kent our aff is [name]` — Set your aff for neg scouting\n\n' +
         '**Tournament Tracking:**\n' +
         '`@Clerk Kent track <tabroom_url> <team_code>` — Register a team to track\n' +
         '`@Clerk Kent report <code>` — Get latest pairings & judge info for a team\n' +
@@ -1065,8 +1149,8 @@ class ClerkKentBot {
         '`@Clerk Kent tournaments` — Show tracked tournaments\n\n' +
         '**Examples:**\n' +
         '`@Clerk Kent Smith` — Judge lookup\n' +
-        '`@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080`\n' +
-        '`@Clerk Kent add entry Interlake CG #cg-tournaments`'
+        '`@Clerk Kent set schools Dartmouth`\n' +
+        '`@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080`'
       );
   }
 
