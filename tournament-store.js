@@ -56,12 +56,27 @@ class TournamentStore {
   }
 
   getSchoolNames() {
-    return this.settings.schoolNames
-      || (process.env.SCHOOL_NAMES || 'Interlake,Cuttlefish').split(',').map(s => s.trim());
+    // Flattened list of all school names across tiers
+    return this.getSchoolTiers().flatMap(t => t.schools);
   }
 
   setSchoolNames(names) {
-    this.settings.schoolNames = names;
+    // Legacy setter — puts all names in the first (HS) tier
+    const tiers = this.getSchoolTiers();
+    tiers[0].schools = names;
+    this.settings.schoolTiers = tiers;
+    this.save();
+  }
+
+  getSchoolTiers() {
+    return this.settings.schoolTiers || [
+      { schools: ['Interlake', 'Cuttlefish', 'Cuttlefish Independent'], caselist: 'hspolicy25', label: 'HS Policy' },
+      { schools: ['Dartmouth'], caselist: 'ndtceda25', label: 'College NDT/CEDA' },
+    ];
+  }
+
+  setSchoolTiers(tiers) {
+    this.settings.schoolTiers = tiers;
     this.save();
   }
 
@@ -72,6 +87,36 @@ class TournamentStore {
   setCaselistSlug(slug) {
     this.settings.caselistSlug = slug;
     this.save();
+  }
+
+  /**
+   * Match a list of entry codes against school tiers.
+   * Returns { tier, entries } for the first matching tier, or null.
+   */
+  matchSchoolTier(entries) {
+    for (const tier of this.getSchoolTiers()) {
+      const lowerSchools = tier.schools.map(s => s.toLowerCase());
+      const matched = entries.filter(e =>
+        lowerSchools.some(s => e.code.toLowerCase().startsWith(s))
+      );
+      if (matched.length > 0) {
+        return { tier, entries: matched };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Find which caselist slug applies for a given team code.
+   */
+  getCaselistForTeam(teamCode) {
+    const lower = teamCode.toLowerCase();
+    for (const tier of this.getSchoolTiers()) {
+      if (tier.schools.some(s => lower.startsWith(s.toLowerCase()))) {
+        return tier.caselist;
+      }
+    }
+    return this.getCaselistSlug();
   }
 
   /**

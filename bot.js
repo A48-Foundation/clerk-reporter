@@ -217,21 +217,22 @@ class ClerkKentBot {
         return;
       }
 
-      // Filter for our school's teams
-      const schoolNames = this.store.getSchoolNames()
-        .map(s => s.trim().toLowerCase());
+      // Auto-detect school tier (HS first, then college)
+      const tierMatch = this.store.matchSchoolTier(result.entries);
 
-      const ourEntries = result.entries.filter(e =>
-        schoolNames.some(s => e.code.toLowerCase().startsWith(s))
-      );
-
-      if (ourEntries.length === 0) {
+      if (!tierMatch) {
+        const allSchools = this.store.getSchoolTiers()
+          .flatMap(t => t.schools).join(', ');
         await message.reply(
-          `⚠️ No teams matching school names (${schoolNames.join(', ')}) found in entries.\n` +
+          `⚠️ No teams matching tracked schools (${allSchools}) found in entries.\n` +
           `You can manually add entries with \`@Clerk Kent add entry <team_code> #channel\`.`
         );
         return;
       }
+
+      const ourEntries = tierMatch.entries;
+      const detectedCaselist = tierMatch.tier.caselist;
+      const detectedLabel = tierMatch.tier.label;
 
       // Auto-map teams to Discord channels
       const teamCodes = ourEntries.map(e => e.code);
@@ -249,19 +250,16 @@ class ClerkKentBot {
         .setTitle(`📋 ${result.tournamentName} — Channel Mapping`)
         .setDescription(
           lines.join('\n') + '\n\n' +
-          'Type overrides like `OC=#some-channel`, then select your **caselist** to start.'
+          `📑 Detected caselist: **${detectedLabel}** (\`${detectedCaselist}\`)\n\n` +
+          'Type overrides like `OC=#some-channel` or click **Confirm & Start** when ready.'
         )
         .setColor(0x5865f2);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId('pairings_hs')
-          .setLabel('🏫 HS Policy')
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId('pairings_college')
-          .setLabel('🎓 College NDT/CEDA')
-          .setStyle(ButtonStyle.Primary),
+          .setCustomId('pairings_confirm')
+          .setLabel('✅ Confirm & Start')
+          .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId('pairings_cancel')
           .setLabel('Cancel')
@@ -281,6 +279,8 @@ class ClerkKentBot {
         channelId: message.channel.id,
         userId: message.author.id,
         setupMessage,
+        caselistSlug: detectedCaselist,
+        caselistLabel: detectedLabel,
       };
 
     } catch (err) {
@@ -306,19 +306,16 @@ class ClerkKentBot {
       .setTitle(`📋 ${session.tournamentName} — Channel Mapping`)
       .setDescription(
         lines.join('\n') + '\n\n' +
-        'Type overrides like `OC=#some-channel`, then select your **caselist** to start.'
+        `📑 Detected caselist: **${session.caselistLabel || 'HS Policy'}** (\`${session.caselistSlug || 'hspolicy25'}\`)\n\n` +
+        'Type overrides like `OC=#some-channel` or click **Confirm & Start** when ready.'
       )
       .setColor(0x5865f2);
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('pairings_hs')
-        .setLabel('🏫 HS Policy')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('pairings_college')
-        .setLabel('🎓 College NDT/CEDA')
-        .setStyle(ButtonStyle.Primary),
+        .setCustomId('pairings_confirm')
+        .setLabel('✅ Confirm & Start')
+        .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('pairings_cancel')
         .setLabel('Cancel')
@@ -391,17 +388,17 @@ class ClerkKentBot {
    * Handle Discord button interactions.
    */
   async handleButtonInteraction(interaction) {
-    if (interaction.customId === 'pairings_hs' || interaction.customId === 'pairings_college') {
+    if (interaction.customId === 'pairings_confirm') {
       if (!this._pendingSession) {
         await interaction.reply({ content: '⚠️ No pending session to confirm.', ephemeral: true });
         return;
       }
 
-      const caselistSlug = interaction.customId === 'pairings_college' ? 'ndtceda25' : 'hspolicy25';
-      const caselistLabel = interaction.customId === 'pairings_college' ? 'College NDT/CEDA' : 'HS Policy';
-
       const session = this._pendingSession;
       this._pendingSession = null;
+
+      const caselistSlug = session.caselistSlug || 'hspolicy25';
+      const caselistLabel = session.caselistLabel || 'HS Policy';
 
       // Build channelMappings as { teamCode: channelId }
       const channelMappings = {};
@@ -655,7 +652,7 @@ class ClerkKentBot {
 
     await channel.sendTyping();
 
-    const caselistSlug = this.store.getCaselistSlug();
+    const caselistSlug = this.store.getCaselistForTeam(ourTeamCode);
 
     // Look up opponent on caselist using entry names from Tabroom
     let opponentData = null;
