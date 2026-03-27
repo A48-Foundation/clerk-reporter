@@ -3,9 +3,8 @@ const Imap = require('imap');
 const { simpleParser } = require('mailparser');
 const EmailParser = require('./email-parser');
 
-const FAST_INTERVAL = 10 * 1000;        // 10s — waiting for pairings
-const SLOW_INTERVAL = 5 * 60 * 1000;    // 5min — round in progress
-const SLOW_DURATION = 2.5 * 60 * 60 * 1000; // 2.5h total slow window
+const FAST_INTERVAL = 1 * 1000;          // 1s — waiting for pairings
+const SLOW_INTERVAL = 10 * 60 * 1000;   // 10min — round in progress
 const RESUME_FAST_AT = 1.5 * 60 * 60 * 1000; // resume fast after 1.5h
 
 class EmailMonitor extends EventEmitter {
