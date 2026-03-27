@@ -31,6 +31,11 @@ describe('parseSubject', () => {
         school: null,
       });
     });
+
+    test('parses elim round subject (Doubles)', () => {
+      const result = EmailParser.parseSubject(fixtures.formatA_flip.input.subject);
+      expect(result).toEqual(fixtures.formatA_flip.expectedSubject);
+    });
   });
 
   describe('Format B (assignments) subjects', () => {
@@ -123,6 +128,24 @@ describe('parseBody', () => {
       expect(result.judges).toEqual([{ name: 'Kyser, Drixxon', pronouns: null }]);
     });
 
+    test('parses FLIP FOR SIDES body with 3 judges', () => {
+      const result = EmailParser.parseBody(fixtures.formatA_flip.input.body);
+      expect(result.roundTitle).toBe('Doubles of Policy - TOC');
+      expect(result.startTime).toBe('3:30 PST');
+      expect(result.room).toBe('NSDA Campus Section 6');
+      expect(result.side).toBe('FLIP');
+      expect(result.competitors.aff.teamCode).toBe('Interlake OC');
+      expect(result.competitors.aff.names).toEqual([
+        { name: 'Eva', pronouns: 'she/her' },
+        { name: 'Mia', pronouns: 'she/her' },
+      ]);
+      expect(result.competitors.neg.teamCode).toBe('Peninsula BB');
+      expect(result.judges).toHaveLength(3);
+      expect(result.judges[0]).toEqual({ name: 'Evan Alexis', pronouns: 'He/Him' });
+      expect(result.judges[1]).toEqual({ name: 'Eli Hatton', pronouns: 'he/they' });
+      expect(result.judges[2]).toEqual({ name: 'Jayden Sampat', pronouns: 'they/them' });
+    });
+
     test('returns empty result for empty body string', () => {
       const result = EmailParser.parseBody(fixtures.edgeCase_emptyBody.input.body);
       expect(result.roundTitle).toBeNull();
@@ -184,6 +207,11 @@ describe('parse', () => {
   test('Format A — DSDS with comma in judge name', () => {
     const result = EmailParser.parse(fixtures.formatA_dsds.input);
     expect(result).toEqual(fixtures.formatA_dsds.expectedParsed);
+  });
+
+  test('Format A — FLIP FOR SIDES with 3 judges (elim round)', () => {
+    const result = EmailParser.parse(fixtures.formatA_flip.input);
+    expect(result).toEqual(fixtures.formatA_flip.expectedParsed);
   });
 
   test('Format B — Westchester (single entry, FLIP, 3 judges)', () => {
@@ -289,6 +317,10 @@ describe('isPairingEmail', () => {
 
     test('Format A — DSDS', () => {
       expect(EmailParser.isPairingEmail(fixtures.formatA_dsds.input)).toBe(true);
+    });
+
+    test('Format A — FLIP FOR SIDES', () => {
+      expect(EmailParser.isPairingEmail(fixtures.formatA_flip.input)).toBe(true);
     });
 
     test('Format B — Westchester', () => {

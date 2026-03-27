@@ -47,6 +47,18 @@ class EmailParser {
       };
     }
 
+    // Format A (elim): "[TAB] TeamCode ElimName Event"
+    const elimMatch = subject.match(/^\[TAB\]\s+(.+?)\s+(Doubles|Octas|Quarters|Semis|Finals|Triples|Round\s+of\s+\d+)\s+(.+)$/i);
+    if (elimMatch) {
+      return {
+        teamCode: elimMatch[1].trim(),
+        roundNumber: null,
+        event: elimMatch[3].trim(),
+        format: 'liveUpdate',
+        school: null,
+      };
+    }
+
     return null;
   }
 
@@ -85,6 +97,7 @@ class EmailParser {
     let section = 'header';
     let currentSide = null;
     let currentJudge = null;
+    let flipMode = false;
 
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i];
@@ -112,10 +125,33 @@ class EmailParser {
       if (section === 'header') {
         parseLiveUpdateHeaderLine(trimmed, result);
       } else if (section === 'competitors') {
+        // Detect "FLIP FOR SIDES:" or "FLIP FOR SIDES"
+        if (/^FLIP\s+(?:FOR\s+)?SIDES:?$/i.test(trimmed)) {
+          result.side = 'FLIP';
+          flipMode = true;
+          currentSide = null;
+          continue;
+        }
+
         const sideMatch = trimmed.match(/^(AFF|NEG)\s+(.+)$/i);
         if (sideMatch) {
           currentSide = sideMatch[1].toUpperCase() === 'AFF' ? 'aff' : 'neg';
           result.competitors[currentSide].teamCode = sideMatch[2].trim();
+        } else if (flipMode) {
+          // In flip mode, lines with "Name : pronoun" patterns are debater names;
+          // other lines are team codes (first → aff, second → neg)
+          if (looksLikeNameLine(trimmed)) {
+            if (currentSide) {
+              result.competitors[currentSide].names.push(...parseNames(trimmed));
+            }
+          } else {
+            if (!currentSide) {
+              currentSide = 'aff';
+            } else if (currentSide === 'aff') {
+              currentSide = 'neg';
+            }
+            result.competitors[currentSide].teamCode = trimmed;
+          }
         } else if (currentSide) {
           result.competitors[currentSide].names.push(...parseNames(trimmed));
         }
@@ -280,12 +316,13 @@ class EmailParser {
     if (/\bvs\s+\w/i.test(body)) posSignals++;
     if (/^Side:\s*(AFF|NEG|FLIP)/mi.test(body)) posSignals++;
     if (/^Room:\s*\w/mi.test(body)) posSignals++;
+    if (/FLIP\s+(?:FOR\s+)?SIDES/i.test(body)) posSignals++;
 
     // If dominated by negative signals and no positive signals, reject
     if (negBodySignals >= 2 && posSignals === 0) return false;
 
-    // Subject-based strong positive: "[TAB] Team Round N Event" (numeric round)
-    if (/\[TAB\].+Round\s+\d+\s+/i.test(subject)) return posSignals >= 1 || true;
+    // Subject-based strong positive: "[TAB] Team Round N Event" or elim round name
+    if (/\[TAB\].+(?:Round\s+\d+|Doubles|Octas|Quarters|Semis|Finals|Triples)\s+/i.test(subject)) return posSignals >= 1 || true;
 
     // Subject-based moderate positive: "[TAB] School Round Assignments"
     // Requires body confirmation
@@ -522,6 +559,14 @@ function parseLiveUpdateHeaderLine(trimmed, result) {
 
 function isIndented(line) {
   return /^[ \t]+\S/.test(line);
+}
+
+/**
+ * Detect if a line looks like debater names (has "Name : pronoun" patterns).
+ * Used to distinguish team codes from debater names in FLIP mode.
+ */
+function looksLikeNameLine(line) {
+  return /\w\s*:\s*\w+\/\w+/.test(line);
 }
 
 /**

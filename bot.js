@@ -563,16 +563,17 @@ class ClerkKentBot {
         const negIsOurs = schoolNames.some(s => negCode.toLowerCase().startsWith(s));
 
         let ourTeamCode, opponentCode, opponentSide, side;
+        const isFlip = parsed.side === 'FLIP';
         if (affIsOurs) {
           ourTeamCode = affCode;
           opponentCode = negCode;
-          opponentSide = 'N';
-          side = 'AFF';
+          opponentSide = isFlip ? null : 'N';
+          side = isFlip ? 'FLIP' : 'AFF';
         } else if (negIsOurs) {
           ourTeamCode = negCode;
           opponentCode = affCode;
-          opponentSide = 'A';
-          side = 'NEG';
+          opponentSide = isFlip ? null : 'A';
+          side = isFlip ? 'FLIP' : 'NEG';
         } else {
           return;
         }
@@ -694,7 +695,7 @@ class ClerkKentBot {
       room,
       side,
       teamCode: ourTeamCode,
-      aff: aff || { teamCode: side === 'AFF' ? ourTeamCode : opponentCode },
+      aff: aff || { teamCode: side === 'NEG' ? opponentCode : ourTeamCode },
       neg: neg || { teamCode: side === 'NEG' ? ourTeamCode : opponentCode },
     };
 

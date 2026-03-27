@@ -2,7 +2,7 @@ const fetch = require('node-fetch');
 const Fuse = require('fuse.js');
 
 const BASE_URL = 'https://api.opencaselist.com/v1';
-const DEFAULT_CASELIST = 'hspolicy25';
+const DEFAULT_CASELIST = process.env.CASELIST_SLUG || 'hspolicy25';
 
 class CaselistService {
   constructor() {

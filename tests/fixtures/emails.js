@@ -394,6 +394,77 @@ const formatA_dsds = {
 
 // ─── Edge cases ──────────────────────────────────────────────────
 
+// FORMAT A: FLIP FOR SIDES (elim round, multiple judges)
+const formatA_flip = {
+  input: {
+    subject: '[TAB] Interlake OC Doubles CX-T',
+    from: '40th Annual Stanford Invitational <stanford_1770591640@www.tabroom.com>',
+    body: [
+      'Doubles of Policy - TOC',
+      'Start: 3:30 PST',
+      '',
+      'Room: NSDA Campus Section 6',
+      '',
+      'Competitors',
+      '',
+      'FLIP FOR SIDES:',
+      '',
+      'Interlake OC',
+      '',
+      'Eva : she/her Mia : she/her',
+      '',
+      'Peninsula BB',
+      '',
+      'Judging',
+      '',
+      'Evan Alexis',
+      '',
+      'He/Him',
+      '',
+      'Eli Hatton',
+      '',
+      'he/they',
+      '',
+      'Jayden Sampat',
+      '',
+      'they/them',
+    ].join('\n'),
+  },
+  expectedSubject: {
+    teamCode: 'Interlake OC',
+    roundNumber: null,
+    event: 'CX-T',
+    format: 'liveUpdate',
+    school: null,
+  },
+  expectedParsed: {
+    format: 'liveUpdate',
+    teamCode: 'Interlake OC',
+    roundNumber: null,
+    event: 'CX-T',
+    roundTitle: 'Doubles of Policy - TOC',
+    startTime: '3:30 PST',
+    room: 'NSDA Campus Section 6',
+    side: 'FLIP',
+    aff: {
+      teamCode: 'Interlake OC',
+      names: [
+        { name: 'Eva', pronouns: 'she/her' },
+        { name: 'Mia', pronouns: 'she/her' },
+      ],
+    },
+    neg: {
+      teamCode: 'Peninsula BB',
+      names: [],
+    },
+    judges: [
+      { name: 'Evan Alexis', pronouns: 'He/Him' },
+      { name: 'Eli Hatton', pronouns: 'he/they' },
+      { name: 'Jayden Sampat', pronouns: 'they/them' },
+    ],
+  },
+};
+
 const edgeCase_emptyBody = {
   input: {
     subject: '[TAB] Interlake OC Round 1 CX-T',
@@ -447,6 +518,7 @@ module.exports = {
   formatA_multipleJudges,
   formatA_indentedNames,
   formatA_dsds,
+  formatA_flip,
   formatB_westchester,
   formatB_multipleEntries,
   nonPairing_checkin,
