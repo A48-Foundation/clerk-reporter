@@ -628,6 +628,9 @@ class ClerkKentBot {
 
         await this._processSinglePairing(pairingData, session);
       }
+
+      // Switch to slow polling now that a round is in progress
+      if (this.emailMonitor) this.emailMonitor.enterSlowMode();
     } catch (err) {
       console.error('[handlePairingEvent] Error:', err);
     }

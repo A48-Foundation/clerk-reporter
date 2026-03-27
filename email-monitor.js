@@ -3,23 +3,50 @@ const Imap = require('imap');
 const { simpleParser } = require('mailparser');
 const EmailParser = require('./email-parser');
 
+const FAST_INTERVAL = 10 * 1000;        // 10s — waiting for pairings
+const SLOW_INTERVAL = 5 * 60 * 1000;    // 5min — round in progress
+const SLOW_DURATION = 2.5 * 60 * 60 * 1000; // 2.5h total slow window
+const RESUME_FAST_AT = 1.5 * 60 * 60 * 1000; // resume fast after 1.5h
+
 class EmailMonitor extends EventEmitter {
   constructor(options = {}) {
     super();
     this.email = options.email || process.env.IMAP_EMAIL;
     this.password = options.password || process.env.IMAP_PASSWORD;
-    this.pollInterval = options.pollInterval || 30000;
-    this.maxReconnectDelay = options.maxReconnectDelay || 300000; // 5 min cap
+    this.maxReconnectDelay = options.maxReconnectDelay || 300000;
     this._pollTimer = null;
+    this._resumeTimer = null;
     this._imap = null;
     this._stopped = false;
     this._reconnectAttempts = 0;
+    this._currentInterval = FAST_INTERVAL;
   }
 
   start() {
     this._stopped = false;
     this._reconnectAttempts = 0;
+    this._currentInterval = FAST_INTERVAL;
     this._connect();
+  }
+
+  /**
+   * Switch to slow polling after a pairing event. Automatically resumes
+   * fast polling after RESUME_FAST_AT ms.
+   */
+  enterSlowMode() {
+    if (this._currentInterval === SLOW_INTERVAL) return;
+    this._currentInterval = SLOW_INTERVAL;
+    console.log(`[EmailMonitor] ⏳ Switching to slow polling (${SLOW_INTERVAL / 1000}s) — round in progress`);
+
+    // Clear any existing resume timer
+    if (this._resumeTimer) clearTimeout(this._resumeTimer);
+
+    // Schedule return to fast polling
+    this._resumeTimer = setTimeout(() => {
+      this._currentInterval = FAST_INTERVAL;
+      console.log(`[EmailMonitor] ⚡ Resuming fast polling (${FAST_INTERVAL / 1000}s)`);
+      this._resumeTimer = null;
+    }, RESUME_FAST_AT);
   }
 
   _connect() {
@@ -76,6 +103,10 @@ class EmailMonitor extends EventEmitter {
       clearTimeout(this._pollTimer);
       this._pollTimer = null;
     }
+    if (this._resumeTimer) {
+      clearTimeout(this._resumeTimer);
+      this._resumeTimer = null;
+    }
     if (this._imap) {
       this._imap.end();
       this._imap = null;
@@ -90,7 +121,7 @@ class EmailMonitor extends EventEmitter {
         this.emit('error', err);
       }
       if (this._imap) {
-        this._pollTimer = setTimeout(runPoll, this.pollInterval);
+        this._pollTimer = setTimeout(runPoll, this._currentInterval);
       }
     };
     runPoll();
