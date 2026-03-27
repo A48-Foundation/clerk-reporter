@@ -730,41 +730,6 @@ class ClerkKentBot {
       }
     }
 
-    // Look up judges
-    const judgeEmbedData = [];
-    for (const judge of judges) {
-      const judgeName = judge.name;
-      // Skip obviously invalid judge names (email signature artifacts, etc.)
-      if (!judgeName || judgeName.length < 3 || /^-+$/.test(judgeName) || /^(thanks|sent from|cheers)/i.test(judgeName)) continue;
-
-      let paradigmSummary = null;
-      let paradigmUrl = null;
-      let school = null;
-
-      const paradigm = await this.paradigmService.fetchParadigmByName(judgeName);
-      if (paradigm) {
-        paradigmUrl = paradigm.paradigmUrl;
-        school = paradigm.school;
-        if (paradigm.philosophy) {
-          paradigmSummary = await this.llmService.summarizeParadigm(paradigm.philosophy);
-        }
-      }
-
-      let notionNotes = null;
-      let notionUrl = null;
-      const notionResults = await this.notion.searchJudge(judgeName);
-      if (notionResults.length > 0) {
-        const j = notionResults[0];
-        notionUrl = j.url || null;
-        if (j.comments && j.comments.length > 0) {
-          notionNotes = j.comments.map((c, i) => `**${i + 1}.** ${c}`).join('\n');
-          if (notionNotes.length > 500) notionNotes = notionNotes.slice(0, 497) + '...';
-        }
-      }
-
-      judgeEmbedData.push({ name: judgeName, paradigmSummary, paradigmUrl, school, notionNotes, notionUrl });
-    }
-
     // Build pairing data for the embed
     const pairingEmbed = {
       roundTitle: roundTitle || `Round ${roundNumber || '?'}`,
@@ -776,11 +741,69 @@ class ClerkKentBot {
       neg: neg || { teamCode: side === 'NEG' ? ourTeamCode : opponentCode },
     };
 
-    const embeds = this.reportBuilder.buildFullReport(pairingEmbed, opponentData, judgeEmbedData);
+    // Phase 1: Send pairing + opponent info immediately
+    const initialEmbeds = this.reportBuilder.buildFullReport(pairingEmbed, opponentData, []);
 
-    if (embeds.length > 0) {
-      await channel.send({ embeds: embeds.slice(0, 10) });
-      console.log(`✅ Sent pairings report for ${ourTeamCode} (${roundTitle || 'Round ' + (roundNumber || '?')})`);
+    // Add placeholder judge embeds with "Loading..." while paradigms are fetched
+    const validJudges = judges.filter(j => {
+      const n = j.name;
+      return n && n.length >= 3 && !/^-+$/.test(n) && !/^(thanks|sent from|cheers)/i.test(n);
+    });
+    for (const judge of validJudges) {
+      initialEmbeds.push(this.reportBuilder.buildJudgeEmbed({
+        name: judge.name,
+        paradigmSummary: '_⏳ Loading paradigm..._',
+      }));
+    }
+
+    let sentMessage = null;
+    if (initialEmbeds.length > 0) {
+      sentMessage = await channel.send({ embeds: initialEmbeds.slice(0, 10) });
+      console.log(`📨 Sent initial report for ${ourTeamCode} (${roundTitle || 'Round ' + (roundNumber || '?')})`);
+    }
+
+    // Phase 2: Fetch all judge paradigms in parallel, then edit the message
+    if (sentMessage && validJudges.length > 0) {
+      const judgePromises = validJudges.map(async (judge) => {
+        const judgeName = judge.name;
+        let paradigmSummary = null;
+        let paradigmUrl = null;
+        let school = null;
+
+        const paradigm = await this.paradigmService.fetchParadigmByName(judgeName);
+        if (paradigm) {
+          paradigmUrl = paradigm.paradigmUrl;
+          school = paradigm.school;
+          if (paradigm.philosophy) {
+            paradigmSummary = await this.llmService.summarizeParadigm(paradigm.philosophy);
+          }
+        }
+
+        let notionNotes = null;
+        let notionUrl = null;
+        const notionResults = await this.notion.searchJudge(judgeName);
+        if (notionResults.length > 0) {
+          const j = notionResults[0];
+          notionUrl = j.url || null;
+          if (j.comments && j.comments.length > 0) {
+            notionNotes = j.comments.map((c, i) => `**${i + 1}.** ${c}`).join('\n');
+            if (notionNotes.length > 500) notionNotes = notionNotes.slice(0, 497) + '...';
+          }
+        }
+
+        return { name: judgeName, paradigmSummary, paradigmUrl, school, notionNotes, notionUrl };
+      });
+
+      const judgeEmbedData = await Promise.all(judgePromises);
+
+      // Rebuild full embeds with completed judge data and edit the message
+      const finalEmbeds = this.reportBuilder.buildFullReport(pairingEmbed, opponentData, judgeEmbedData);
+      try {
+        await sentMessage.edit({ embeds: finalEmbeds.slice(0, 10) });
+        console.log(`✅ Updated report with paradigms for ${ourTeamCode}`);
+      } catch (err) {
+        console.error(`[Pairing] Failed to edit message with paradigms:`, err.message);
+      }
     }
   }
 
