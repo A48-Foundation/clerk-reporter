@@ -56,7 +56,10 @@ class EmailMonitor extends EventEmitter {
   _connect() {
     if (this._stopped) return;
 
-    this._imap = new Imap({
+    // Tear down any lingering connection before creating a new one
+    this._destroyConnection();
+
+    const imap = new Imap({
       user: this.email,
       password: this.password,
       host: 'imap.gmail.com',
@@ -66,26 +69,50 @@ class EmailMonitor extends EventEmitter {
       keepalive: { interval: 10000, idleInterval: 300000, forceNoop: true }
     });
 
-    this._imap.once('ready', () => {
+    this._imap = imap;
+    this._reconnecting = false;
+
+    imap.once('ready', () => {
+      if (this._imap !== imap) return; // stale connection, ignore
       this._reconnectAttempts = 0;
       this._inboxOpen = false;
       this.emit('connected');
       this._openInboxThenPoll();
     });
 
-    this._imap.once('error', (err) => {
+    imap.once('error', (err) => {
       console.error('[EmailMonitor] IMAP error:', err.message);
       this.emit('error', err);
-      this._scheduleReconnect();
+      this._handleDisconnect(imap);
     });
 
-    this._imap.once('end', () => {
+    imap.once('end', () => {
       console.warn('[EmailMonitor] IMAP connection ended');
       this.emit('disconnected');
-      this._scheduleReconnect();
+      this._handleDisconnect(imap);
     });
 
-    this._imap.connect();
+    imap.connect();
+  }
+
+  /** Safely destroy the current IMAP connection so the server releases the slot. */
+  _destroyConnection() {
+    if (!this._imap) return;
+    try { this._imap.destroy(); } catch (_) { /* ignore */ }
+    this._imap = null;
+    this._inboxOpen = false;
+  }
+
+  /**
+   * Unified handler for both 'error' and 'end' events.
+   * Deduplicates so only the first of the two triggers a reconnect,
+   * and ignores events from stale (replaced) connections.
+   */
+  _handleDisconnect(imap) {
+    if (this._imap !== imap) return;   // event from a stale connection
+    if (this._reconnecting) return;    // already handling this disconnect
+    this._reconnecting = true;
+    this._scheduleReconnect();
   }
 
   /** Open INBOX once, then start the poll loop. */
@@ -108,8 +135,7 @@ class EmailMonitor extends EventEmitter {
       clearTimeout(this._pollTimer);
       this._pollTimer = null;
     }
-    this._imap = null;
-    this._inboxOpen = false;
+    this._destroyConnection();
 
     this._reconnectAttempts++;
     const delay = Math.min(1000 * Math.pow(2, this._reconnectAttempts), this.maxReconnectDelay);
@@ -157,11 +183,7 @@ class EmailMonitor extends EventEmitter {
       clearTimeout(this._pollTimer);
       this._pollTimer = null;
     }
-    if (this._imap) {
-      try { this._imap.destroy(); } catch (_) { /* ignore */ }
-      this._imap = null;
-    }
-    this._inboxOpen = false;
+    this._destroyConnection();
     this._reconnectAttempts = 0;
     this._connect();
   }
