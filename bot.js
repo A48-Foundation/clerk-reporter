@@ -1083,16 +1083,39 @@ class ClerkKentBot {
       console.log(`[DEBUG] Raw message: "${message.content}"`);
       console.log(`[DEBUG] Extracted judge name: "${judgeName}"`);
 
-      const judges = await this.notion.searchJudge(judgeName);
+      // Fetch Notion notes and Tabroom paradigm in parallel
+      const [judges, paradigm] = await Promise.all([
+        this.notion.searchJudge(judgeName),
+        this.paradigmService.fetchParadigmByName(judgeName).catch(err => {
+          console.warn(`[JudgeLookup] Paradigm fetch failed for "${judgeName}":`, err.message);
+          return null;
+        }),
+      ]);
 
-      if (judges.length === 0) {
+      // Summarize paradigm if available
+      let paradigmSummary = null;
+      let paradigmUrl = null;
+      if (paradigm) {
+        paradigmUrl = paradigm.paradigmUrl || null;
+        if (paradigm.philosophy) {
+          paradigmSummary = await this.llmService.summarizeParadigm(paradigm.philosophy);
+        }
+      }
+
+      if (judges.length === 0 && !paradigmSummary) {
         await message.reply(
           `🔍 No judges found matching **"${judgeName}"**. Try a different spelling or partial name.`
         );
         return;
       }
 
-      const embeds = judges.map(judge => this.buildJudgeEmbed(judge));
+      const embeds = judges.map(judge => this.buildJudgeEmbed(judge, { paradigmSummary, paradigmUrl }));
+
+      // If no Notion results but we have a paradigm, build a standalone embed
+      if (judges.length === 0 && paradigmSummary) {
+        embeds.push(this.buildJudgeEmbed({ name: judgeName, comments: [] }, { paradigmSummary, paradigmUrl }));
+      }
+
       await message.reply({ embeds });
     } catch (err) {
       console.error('Error handling judge search:', err);
@@ -1105,14 +1128,18 @@ class ClerkKentBot {
   /**
    * Build a rich embed for a judge.
    */
-  buildJudgeEmbed(judge) {
+  buildJudgeEmbed(judge, paradigmData = {}) {
+    const { paradigmSummary, paradigmUrl } = paradigmData;
+
     const embed = new EmbedBuilder()
       .setTitle(`⚖️ ${judge.name}`)
       .setColor(0x2F80ED)
       .setTimestamp();
 
     // Email
-    embed.addFields({ name: '📧 Email', value: judge.email, inline: true });
+    if (judge.email) {
+      embed.addFields({ name: '📧 Email', value: judge.email, inline: true });
+    }
 
     // Tabroom link
     if (judge.tabroom) {
@@ -1123,8 +1150,28 @@ class ClerkKentBot {
       });
     }
 
+    // AI Paradigm Summary
+    if (paradigmSummary) {
+      const truncatedSummary = paradigmSummary.length > 1000
+        ? paradigmSummary.slice(0, 997) + '...'
+        : paradigmSummary;
+      embed.addFields({
+        name: '🧠 Paradigm Summary',
+        value: truncatedSummary,
+        inline: false,
+      });
+    }
+
+    if (paradigmUrl) {
+      embed.addFields({
+        name: '📄 Paradigm Link',
+        value: `[View Paradigm](${paradigmUrl})`,
+        inline: true,
+      });
+    }
+
     // Comments / Notes
-    if (judge.comments.length > 0) {
+    if (judge.comments && judge.comments.length > 0) {
       const commentsText = judge.comments
         .map((c, i) => `**${i + 1}.** ${c}`)
         .join('\n\n');
