@@ -22,9 +22,9 @@ const SYSTEM_PROMPT = [
   'Summarize this judge paradigm as concise bullet points. No transition words, no filler.',
   'Only include bullets that the paradigm clearly supports. Use this checklist:',
   '• Neg Ks — good/bad for kritiks on the neg? Will they vote on the alt? Framework preferences?',
-  '• T v K Affs — stance on topicality/framework against critical/non-traditional affs? Do they think affs must defend the resolution/a plan? Topical version of the aff opinions go here.',
+  '• T v K Affs — stance on topicality/framework against critical/non-traditional affs? Do they think affs must defend the resolution/a plan? Topical version of the aff opinions go here. Do they think fairness is an impact or that clash is better than fairness?',
   '• T v Policy — how do they evaluate topicality against policy affs? Appeals to limits, precision, etc.',
-  '• CPs — preferences on counterplans? Types they like/dislike? Conditionality views?',
+  '• CPs — preferences on counterplans? Types they like/dislike? Conditionality views? Preferences on process counterplans? Views on counterplan competition (e.g. textual vs functional)?',
   '• DAs — any preferences on disadvantages? Link quality, uniqueness, turns case?',
   '• Theory — if they say specific args are bad/good (e.g. consult/conditioning/delay CPs, international fiat, 50 state fiat, condo), state exactly which and their opinion. If they say reject-the-arg-not-the-team or reject-the-team, state it.',
   '• Speed — do they dislike speed or have a cap?',
@@ -32,7 +32,8 @@ const SYSTEM_PROMPT = [
   '• Non-policy background — if they did LD, PF, parli, speech, or another activity instead of policy, state it',
   '• Speaker points — if they mention a speaker point range, scale, or criteria, state it',
   '• Strong indicators — any auto-rejects, hard preferences, or dealbreakers',
-  'Skip any category with no clear signal. Max 11 bullets. Format: "• Topic: detail"',
+  '• Slop/Tricks — any opinions on slop, tricks, wipe-out arguments, death-good arguments, or cheap shots? State their preference or tolerance',
+  'Skip any category with no clear signal. Max 12 bullets. Format: "• Topic: detail"',
 ].join('\n');
 
 class ParadigmSummarizer {
