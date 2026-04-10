@@ -17,7 +17,7 @@
     "dotenv": "^16.4.5",
     "fuse.js": "^7.1.0",
     "imap": "^0.8.19",
-    "mailparser": "^3.9.3",
+    "mailparser": "^3.9.8",
     "node-fetch": "^2.7.0",
     "openai": "^6.27.0"
   },
