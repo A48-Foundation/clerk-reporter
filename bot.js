@@ -69,7 +69,7 @@ class ClerkKentBot {
 
     // Strip the mention to extract the command
     const content = message.content
-      .replace(/<@!?\d+>/g, '')  // remove mentions
+      .replace(/<@[!&]?\d+>/g, '')  // remove user and role mentions
       .trim();
 
     console.log(`[handleMessage] Raw: "${message.content}"`);
