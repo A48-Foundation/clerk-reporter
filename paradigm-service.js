@@ -118,6 +118,20 @@ class ParadigmService {
   }
 
   /**
+   * Fetch any Tabroom page using the ParadigmService's authenticated session.
+   * Ensures login, follows redirects, returns HTML body.
+   */
+  async fetchPage(url) {
+    const sessionExpired = this.loggedIn && (Date.now() - this._loginTime > ParadigmService.LOGIN_TTL);
+    if (!this.loggedIn || sessionExpired) {
+      this.loggedIn = false;
+      await this.login();
+    }
+    const res = await this._fetchFollowRedirects(url);
+    return res.body;
+  }
+
+  /**
    * Search Tabroom paradigms by first/last name.
    * Returns an array of { name, judgePersonId, paradigmUrl }.
    */

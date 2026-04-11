@@ -1255,7 +1255,27 @@ class ClerkKentBot {
     try {
       await message.channel.sendTyping();
 
-      const allJudges = await TabroomScraper.scrapeJudges(url);
+      // Use ParadigmService's authenticated session (same as paradigm lookups)
+      const cheerio = require('cheerio');
+      const html = await this.paradigmService.fetchPage(url);
+      const $ = cheerio.load(html);
+      const allJudges = [];
+
+      $('#judgelist tbody tr, #judgelist tr.smaller').each((_, row) => {
+        const cells = $(row).find('td');
+        if (cells.length < 3) return;
+
+        const firstName = $(cells[0]).text().trim();
+        const lastName = $(cells[1]).text().trim();
+        const institution = $(cells[2]).attr('data-text') || $(cells[2]).text().trim();
+
+        if (firstName && lastName) {
+          allJudges.push({ firstName, lastName, institution });
+        }
+      });
+
+      console.log(`[handleReportCoaches] Found ${allJudges.length} total judges on page`);
+
       if (allJudges.length === 0) {
         await message.reply('⚠️ No judges found on that page.');
         return;
