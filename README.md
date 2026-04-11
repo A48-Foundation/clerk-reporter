@@ -88,6 +88,20 @@ Registers a team for round-by-round updates in the current channel. The bot poll
 
 Fetches the latest round's pairing and judge info for a tracked team. Use just the team suffix (e.g. `SW`, `CG`).
 
+#### Coach Reports
+
+```
+@Clerk Kent report coaches <tabroom_judges_url>
+```
+
+Scrapes the Tabroom judges page and identifies coaches from your tracked schools (e.g. Interlake, Cuttlefish Independent). When a coach's judging assignment email arrives, the bot sends a simplified report to the channel where the command was issued — showing only the **coach name**, **start time**, **room**, and **competitors** (no paradigm/wiki lookup).
+
+```
+@Clerk Kent stop coaches
+```
+
+Stop monitoring for coach assignment emails.
+
 ```
 @Clerk Kent untrack <team_code>
 @Clerk Kent tournaments

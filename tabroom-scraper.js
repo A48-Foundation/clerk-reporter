@@ -319,6 +319,44 @@ class TabroomScraper {
     // The round title is in an h4 tag
     return $('h4').first().text().trim() || `Round ${roundId}`;
   }
+
+  /**
+   * Scrape the judges list page for a tournament category.
+   * Returns array of { firstName, lastName, institution, location }
+   */
+  static async scrapeJudges(url) {
+    const html = await this.fetch(url);
+    const $ = cheerio.load(html);
+    const judges = [];
+
+    $('#judgelist tbody tr').each((_, row) => {
+      const cells = $(row).find('td');
+      if (cells.length < 4) return;
+
+      // Columns: Paradigm, First, Last, Institution, Location, ...
+      const firstName = $(cells[1]).text().trim();
+      const lastName = $(cells[2]).text().trim();
+      const institution = $(cells[3]).attr('data-text') || $(cells[3]).text().trim();
+      const location = $(cells[4]).text().trim();
+
+      if (firstName && lastName) {
+        judges.push({ firstName, lastName, institution, location });
+      }
+    });
+
+    return judges;
+  }
+
+  /**
+   * Parse a judges page URL and extract tourn_id and category_id.
+   */
+  static parseJudgesUrl(url) {
+    const parsed = new URL(url);
+    return {
+      tournId: parsed.searchParams.get('tourn_id'),
+      categoryId: parsed.searchParams.get('category_id'),
+    };
+  }
 }
 
 module.exports = TabroomScraper;

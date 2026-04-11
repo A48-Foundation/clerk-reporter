@@ -298,6 +298,22 @@ class TournamentStore {
       this.save();
     }
   }
+
+  // ── Coach Tracking ──
+
+  getCoaches() {
+    return this.settings.coaches || null;
+  }
+
+  setCoaches(coaches) {
+    this.settings.coaches = coaches;
+    this.save();
+  }
+
+  clearCoaches() {
+    delete this.settings.coaches;
+    this.save();
+  }
 }
 
 module.exports = TournamentStore;

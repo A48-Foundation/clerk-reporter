@@ -118,6 +118,18 @@ class ClerkKentBot {
       return;
     }
 
+    if (lowerContent.startsWith('report coaches')) {
+      const url = tabroomUrlMatch ? tabroomUrlMatch[0] : '';
+      await this.handleReportCoaches(message, url);
+      return;
+    }
+
+    if (lowerContent === 'stop coaches') {
+      this.store.clearCoaches();
+      await message.reply('✅ Coach reports stopped.');
+      return;
+    }
+
     if (lowerContent.startsWith('report ')) {
       await this.handleReport(message, content.slice(7).trim());
       return;
@@ -680,6 +692,20 @@ class ClerkKentBot {
           opponentSide = isFlip ? null : 'A';
           side = isFlip ? 'FLIP' : 'NEG';
         } else {
+          // Not our team — check if this is a coach assignment email
+          const coachData = this.store.getCoaches();
+          if (coachData && parsed.teamCode) {
+            const subjectName = parsed.teamCode.toLowerCase();
+            const matchedCoach = coachData.coaches.find(
+              c => c.name.toLowerCase() === subjectName
+            );
+            if (matchedCoach) {
+              await this._processCoachPairing(matchedCoach, parsed, coachData.channelId);
+              // Still switch to slow polling
+              if (this.emailMonitor) this.emailMonitor.enterSlowMode();
+              return;
+            }
+          }
           return;
         }
 
@@ -905,6 +931,51 @@ class ClerkKentBot {
     }
   }
 
+  /**
+   * Send a simplified coach report — only coach name, start time, room, and competitors.
+   * No paradigm/wiki/caselist lookups.
+   */
+  async _processCoachPairing(coach, parsed, channelId) {
+    try {
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel) {
+        console.error(`[CoachPairing] Could not find channel ${channelId}`);
+        return;
+      }
+
+      const roundLabel = parsed.roundTitle || `Round ${parsed.roundNumber || '?'}`;
+      const affCode = parsed.aff?.teamCode || 'TBD';
+      const negCode = parsed.neg?.teamCode || 'TBD';
+      const affNames = (parsed.aff?.names || []).join(', ');
+      const negNames = (parsed.neg?.names || []).join(', ');
+
+      let competitorText = '';
+      if (parsed.side === 'FLIP') {
+        competitorText = `**${affCode}**${affNames ? ` — ${affNames}` : ''}\nvs\n**${negCode}**${negNames ? ` — ${negNames}` : ''}`;
+      } else {
+        competitorText =
+          `🟢 AFF: **${affCode}**${affNames ? ` — ${affNames}` : ''}\n` +
+          `🔴 NEG: **${negCode}**${negNames ? ` — ${negNames}` : ''}`;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🧑‍🏫 ${coach.name} — ${roundLabel}`)
+        .setColor(0x9b59b6)
+        .addFields(
+          { name: '⏰ Start', value: parsed.startTime || 'TBD', inline: true },
+          { name: '📍 Room', value: parsed.room || 'TBD', inline: true },
+          { name: 'Competitors', value: competitorText, inline: false }
+        )
+        .setFooter({ text: `Coach report • ${coach.institution}` })
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+      console.log(`✅ Sent coach report for ${coach.name} — ${roundLabel}`);
+    } catch (err) {
+      console.error(`[CoachPairing] Error sending report for ${coach.name}:`, err);
+    }
+  }
+
   // ─── TOURNAMENT TRACKING COMMANDS ──────────────────────────────
 
   /**
@@ -1026,6 +1097,76 @@ class ClerkKentBot {
    * Finds the tracked team whose code contains the short code,
    * checks the latest round, and sends judge info to this channel.
    */
+  /**
+   * Handle: @Clerk Kent report coaches <judges_page_url>
+   * Scrapes the judges page, finds coaches from our schools, stores them,
+   * and sets up monitoring for their judging assignment emails.
+   */
+  async handleReportCoaches(message, url) {
+    if (!url || !url.includes('judges.mhtml')) {
+      await message.reply(
+        '**Usage:** `@Clerk Kent report coaches <tabroom_judges_url>`\n' +
+        '**Example:** `@Clerk Kent report coaches https://www.tabroom.com/index/tourn/judges.mhtml?category_id=96220&tourn_id=36156`'
+      );
+      return;
+    }
+
+    try {
+      await message.channel.sendTyping();
+
+      const allJudges = await TabroomScraper.scrapeJudges(url);
+      if (allJudges.length === 0) {
+        await message.reply('⚠️ No judges found on that page.');
+        return;
+      }
+
+      // Filter to judges from our tracked schools
+      const schoolNames = this.store.getSchoolNames().map(s => s.toLowerCase());
+      const ourCoaches = allJudges.filter(j =>
+        schoolNames.some(s => j.institution.toLowerCase().includes(s))
+      );
+
+      if (ourCoaches.length === 0) {
+        const schools = this.store.getSchoolNames().join(', ');
+        await message.reply(
+          `⚠️ No judges found from tracked schools (${schools}).\n` +
+          `Use \`@Clerk Kent set schools School1, School2\` to update.`
+        );
+        return;
+      }
+
+      // Store coaches with channel assignment
+      const coachData = {
+        channelId: message.channel.id,
+        coaches: ourCoaches.map(c => ({
+          name: `${c.firstName} ${c.lastName}`,
+          institution: c.institution,
+        })),
+      };
+      this.store.setCoaches(coachData);
+
+      const coachList = coachData.coaches
+        .map(c => `• **${c.name}** (${c.institution})`)
+        .join('\n');
+
+      const embed = new EmbedBuilder()
+        .setTitle('🧑‍🏫 Coach Reports Activated')
+        .setColor(0x9b59b6)
+        .setDescription(
+          `Found **${coachData.coaches.length}** coach(es) from your schools:\n\n` +
+          `${coachList}\n\n` +
+          `Reports will be sent to <#${message.channel.id}> when a coach's judging assignment email arrives.\n` +
+          `Use \`@Clerk Kent stop coaches\` to stop.`
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+    } catch (err) {
+      console.error('[handleReportCoaches] Error:', err);
+      await message.reply(`⚠️ Failed to scrape judges page: ${err.message}`);
+    }
+  }
+
   async handleReport(message, shortCode) {
     if (!shortCode) {
       await message.reply('**Usage:** `@Clerk Kent report <team_code>`\n**Example:** `@Clerk Kent report SW`');
@@ -1394,12 +1535,15 @@ class ClerkKentBot {
         '**Tournament Tracking:**\n' +
         '`@Clerk Kent track <tabroom_url> <team_code>` — Register a team to track\n' +
         '`@Clerk Kent report <code>` — Get latest pairings & judge info for a team\n' +
+        '`@Clerk Kent report coaches <judges_url>` — Track coaches from your schools\n' +
+        '`@Clerk Kent stop coaches` — Stop coach reports\n' +
         '`@Clerk Kent untrack <team_code>` — Stop tracking a team\n' +
         '`@Clerk Kent tournaments` — Show tracked tournaments\n' +
         '`@Clerk Kent poll test` — Run a health check on all systems\n\n' +
         '**Examples:**\n' +
         '`@Clerk Kent Smith` — Judge lookup\n' +
         '`@Clerk Kent set schools Dartmouth`\n' +
+        '`@Clerk Kent report coaches https://www.tabroom.com/index/tourn/judges.mhtml?category_id=96220&tourn_id=36156`\n' +
         '`@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080`'
       );
   }
