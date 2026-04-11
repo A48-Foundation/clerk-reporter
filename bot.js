@@ -82,6 +82,14 @@ class ClerkKentBot {
 
     // Fuzzy match for "initiate pairings reports" — allow typos, missing words, URL anywhere
     const tabroomUrlMatch = content.match(/https?:\/\/(?:www\.)?tabroom\.com\S+/i);
+
+    // Coach reports — must be checked before judge lookup fallthrough
+    if (/^report\s+coaches\b/i.test(lowerContent)) {
+      const url = tabroomUrlMatch ? tabroomUrlMatch[0] : '';
+      await this.handleReportCoaches(message, url);
+      return;
+    }
+
     if (/\binit\w*\s+pair/i.test(lowerContent) || /\bpairings?\s+reports?\b/i.test(lowerContent)) {
       const url = tabroomUrlMatch ? tabroomUrlMatch[0] : '';
       await this.handleInitiatePairings(message, url);
@@ -115,12 +123,6 @@ class ClerkKentBot {
 
     if (lowerContent === 'poll test' || lowerContent === 'health' || lowerContent === 'alive') {
       await this.handlePollTest(message);
-      return;
-    }
-
-    if (lowerContent.startsWith('report coaches')) {
-      const url = tabroomUrlMatch ? tabroomUrlMatch[0] : '';
-      await this.handleReportCoaches(message, url);
       return;
     }
 
