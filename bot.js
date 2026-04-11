@@ -72,6 +72,9 @@ class ClerkKentBot {
       .replace(/<@!?\d+>/g, '')  // remove mentions
       .trim();
 
+    console.log(`[handleMessage] Raw: "${message.content}"`);
+    console.log(`[handleMessage] Parsed content: "${content}"`);
+
     if (!content) {
       await message.reply({ embeds: [this.buildHelpEmbed()] });
       return;
@@ -84,7 +87,7 @@ class ClerkKentBot {
     const tabroomUrlMatch = content.match(/https?:\/\/(?:www\.)?tabroom\.com\S+/i);
 
     // Coach reports — must be checked before judge lookup fallthrough
-    if (/^report\s+coaches\b/i.test(lowerContent)) {
+    if (/report\s*coaches/i.test(content)) {
       const url = tabroomUrlMatch ? tabroomUrlMatch[0] : '';
       await this.handleReportCoaches(message, url);
       return;
