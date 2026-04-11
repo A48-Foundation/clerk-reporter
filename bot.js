@@ -765,6 +765,23 @@ class ClerkKentBot {
       }
       this.store.addProcessedEmailUid(uid);
 
+      // Check if this is a coach assignment email before completeness check
+      // Coach emails may not pass _isCompletePairing if body parsing is partial
+      const coachData = this.store.getCoaches();
+      if (coachData && parsed && parsed.teamCode) {
+        const subjectName = parsed.teamCode.toLowerCase();
+        const matchedCoach = coachData.coaches.find(
+          c => subjectName.startsWith(c.name.toLowerCase()) ||
+               subjectName.includes(c.name.toLowerCase())
+        );
+        if (matchedCoach) {
+          console.log(`[handlePairingEvent] Coach email detected: ${matchedCoach.name} (subject: "${parsed.teamCode}")`);
+          await this._processCoachPairing(matchedCoach, parsed, coachData.channelId);
+          if (this.emailMonitor) this.emailMonitor.enterSlowMode();
+          return;
+        }
+      }
+
       // If the initial regex parse was incomplete, try LLM fallback
       if (!parsed || !EmailParser._isCompletePairing(parsed)) {
         console.log(`[handlePairingEvent] Initial parse incomplete, trying LLM fallback...`);
@@ -832,15 +849,18 @@ class ClerkKentBot {
           const coachData = this.store.getCoaches();
           if (coachData && parsed.teamCode) {
             const subjectName = parsed.teamCode.toLowerCase();
+            console.log(`[handlePairingEvent] Checking coach match: subject="${subjectName}", coaches=[${coachData.coaches.map(c => c.name).join(', ')}]`);
             const matchedCoach = coachData.coaches.find(
-              c => c.name.toLowerCase() === subjectName
+              c => subjectName.startsWith(c.name.toLowerCase()) ||
+                   subjectName.includes(c.name.toLowerCase())
             );
             if (matchedCoach) {
+              console.log(`[handlePairingEvent] Matched coach: ${matchedCoach.name}`);
               await this._processCoachPairing(matchedCoach, parsed, coachData.channelId);
-              // Still switch to slow polling
               if (this.emailMonitor) this.emailMonitor.enterSlowMode();
               return;
             }
+            console.log(`[handlePairingEvent] No coach match found`);
           }
           return;
         }
