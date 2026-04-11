@@ -164,6 +164,32 @@ class ClerkKentBot {
       return;
     }
 
+    if (lowerContent.startsWith('set hq channel')) {
+      const channelMention = message.mentions.channels.first();
+      const arg = content.replace(/^set\s+hq\s+channel\s*/i, '').trim();
+
+      let targetChannel = null;
+      if (channelMention) {
+        targetChannel = channelMention;
+      } else if (arg) {
+        targetChannel = message.guild.channels.cache.find(
+          ch => ch.name.toLowerCase() === arg.toLowerCase() && ch.isTextBased()
+        );
+      } else {
+        targetChannel = message.channel;
+      }
+
+      if (!targetChannel) {
+        await message.reply(`⚠️ Could not find a channel named **${arg}**.`);
+        return;
+      }
+
+      this.store.settings.hqChannelId = targetChannel.id;
+      this.store.save();
+      await message.reply(`📺 All reports will also be mirrored to <#${targetChannel.id}>.`);
+      return;
+    }
+
     if (lowerContent.startsWith('report ')) {
       await this.handleReport(message, content.slice(7).trim());
       return;
@@ -494,14 +520,7 @@ class ClerkKentBot {
             )
             .setColor(0x2ecc71)
         ],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('pairings_restart')
-              .setLabel('🔄 Restart Pipeline')
-              .setStyle(ButtonStyle.Secondary)
-          ),
-        ],
+        components: [this._buildPipelineButtons()],
       });
     } else if (interaction.customId === 'pairings_cancel') {
       this._pendingSession = null;
@@ -564,15 +583,92 @@ class ClerkKentBot {
             .setColor(0x2ecc71)
             .setTimestamp()
         ],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('pairings_restart')
-              .setLabel('🔄 Restart Pipeline')
-              .setStyle(ButtonStyle.Secondary)
-          ),
-        ],
+        components: [this._buildPipelineButtons()],
       });
+    } else if (interaction.customId === 'hq_mirror') {
+      await this._handleHqMirrorButton(interaction);
+    } else if (interaction.customId === 'hq_stop') {
+      delete this.store.settings.hqChannelId;
+      this.store.save();
+      await interaction.update({
+        content: '✅ HQ mirroring stopped.',
+        embeds: interaction.message.embeds,
+        components: [this._buildPipelineButtons()],
+      });
+    }
+  }
+
+  /**
+   * Build the standard button row for the pipeline active card.
+   */
+  _buildPipelineButtons() {
+    const hqActive = !!this.store.settings.hqChannelId;
+    const buttons = [
+      new ButtonBuilder()
+        .setCustomId('pairings_restart')
+        .setLabel('🔄 Restart Pipeline')
+        .setStyle(ButtonStyle.Secondary),
+    ];
+    if (hqActive) {
+      buttons.push(
+        new ButtonBuilder()
+          .setCustomId('hq_stop')
+          .setLabel('📺 Stop HQ Mirror')
+          .setStyle(ButtonStyle.Danger)
+      );
+    } else {
+      buttons.push(
+        new ButtonBuilder()
+          .setCustomId('hq_mirror')
+          .setLabel('📺 Mirror to HQ')
+          .setStyle(ButtonStyle.Secondary)
+      );
+    }
+    return new ActionRowBuilder().addComponents(buttons);
+  }
+
+  /**
+   * Handle the "Mirror to HQ" button — finds tournament-hq channel or prompts.
+   */
+  async _handleHqMirrorButton(interaction) {
+    const guild = interaction.guild;
+    // Try to find a channel named tournament-hq
+    const hqChannel = guild.channels.cache.find(
+      ch => ch.name.toLowerCase() === 'tournament-hq' && ch.isTextBased()
+    );
+
+    if (hqChannel) {
+      this.store.settings.hqChannelId = hqChannel.id;
+      this.store.save();
+      await interaction.update({
+        embeds: interaction.message.embeds,
+        components: [this._buildPipelineButtons()],
+      });
+      await interaction.followUp({
+        content: `📺 All reports (pairings + coaches) will now also be sent to <#${hqChannel.id}>.`,
+        ephemeral: true,
+      });
+    } else {
+      await interaction.reply({
+        content: '⚠️ No channel named **tournament-hq** found. Create one or use `@Clerk Kent set hq channel <name>` to pick a different channel.',
+        ephemeral: true,
+      });
+    }
+  }
+
+  /**
+   * Mirror embeds to the HQ channel if configured.
+   */
+  async _mirrorToHQ(embeds) {
+    const hqChannelId = this.store.settings.hqChannelId;
+    if (!hqChannelId) return;
+    try {
+      const hqChannel = await this.client.channels.fetch(hqChannelId);
+      if (hqChannel) {
+        await hqChannel.send({ embeds: embeds.slice(0, 10) });
+      }
+    } catch (err) {
+      console.error('[HQ Mirror] Failed to send:', err.message);
     }
   }
 
@@ -959,9 +1055,13 @@ class ClerkKentBot {
       try {
         await sentMessage.edit({ embeds: finalEmbeds.slice(0, 10) });
         console.log(`✅ Updated report with paradigms for ${ourTeamCode}`);
+        await this._mirrorToHQ(finalEmbeds);
       } catch (err) {
         console.error(`[Pairing] Failed to edit message with paradigms:`, err.message);
       }
+    } else if (initialEmbeds.length > 0) {
+      // No judges — mirror the initial embeds
+      await this._mirrorToHQ(initialEmbeds);
     }
   }
 
@@ -1004,6 +1104,7 @@ class ClerkKentBot {
         .setTimestamp();
 
       await channel.send({ embeds: [embed] });
+      await this._mirrorToHQ([embed]);
       console.log(`✅ Sent coach report for ${coach.name} — ${roundLabel}`);
     } catch (err) {
       console.error(`[CoachPairing] Error sending report for ${coach.name}:`, err);
@@ -1570,7 +1671,8 @@ class ClerkKentBot {
         '`@Clerk Kent track <tabroom_url> <team_code>` — Register a team to track\n' +
         '`@Clerk Kent report <code>` — Get latest pairings & judge info for a team\n' +
         '`@Clerk Kent report coaches <judges_url>` — Track coaches from your schools\n' +
-        '`@Clerk Kent set coaches channel` — Send coach reports to this channel\n' +
+        '`@Clerk Kent set coaches channel <name>` — Send coach reports to a channel\n' +
+        '`@Clerk Kent set hq channel <name>` — Mirror all reports to a channel\n' +
         '`@Clerk Kent stop coaches` — Stop coach reports\n' +
         '`@Clerk Kent untrack <team_code>` — Stop tracking a team\n' +
         '`@Clerk Kent tournaments` — Show tracked tournaments\n' +
