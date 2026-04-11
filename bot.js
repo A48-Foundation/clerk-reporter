@@ -448,7 +448,14 @@ class ClerkKentBot {
             )
             .setColor(0x2ecc71)
         ],
-        components: [],
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('pairings_restart')
+              .setLabel('🔄 Restart Pipeline')
+              .setStyle(ButtonStyle.Secondary)
+          ),
+        ],
       });
     } else if (interaction.customId === 'pairings_cancel') {
       this._pendingSession = null;
@@ -460,6 +467,64 @@ class ClerkKentBot {
             .setColor(0xe74c3c)
         ],
         components: [],
+      });
+    } else if (interaction.customId === 'pairings_restart') {
+      const session = this.store.getActiveSession();
+      if (!session) {
+        await interaction.reply({ content: '⚠️ No active session to restart.', ephemeral: true });
+        return;
+      }
+
+      // Stop existing email monitor
+      if (this.emailMonitor) {
+        this.emailMonitor.stop();
+        this.emailMonitor = null;
+      }
+
+      // Clear processed emails so the monitor starts fresh
+      session.processedEmailUids = [];
+      session.emailMonitorActive = true;
+      this.store.save();
+
+      // Restart email monitor with same session
+      this.emailMonitor = new EmailMonitor({
+        email: process.env.IMAP_EMAIL,
+        password: process.env.IMAP_PASSWORD,
+      });
+
+      this.emailMonitor.on('pairing', (eventData) => this.handlePairingEvent(eventData));
+      this.emailMonitor.on('error', (err) => console.error('[EmailMonitor] Error:', err.message));
+      this.emailMonitor.on('connected', () => console.log('📧 Email monitor reconnected (restarted)'));
+      this.emailMonitor.start();
+
+      const teamList = Object.entries(session.channelMappings)
+        .map(([team, chId]) => `• **${team}** → <#${chId}>`)
+        .join('\n');
+
+      const caselistSlug = this.store.getCaselistSlug();
+
+      await interaction.update({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(`🔄 Pipeline Restarted — Tournament ${session.tournId}`)
+            .setDescription(
+              `${teamList}\n\n` +
+              `📑 Caselist: \`${caselistSlug}\`\n` +
+              `📧 Email monitor restarted with same channel mappings.\n` +
+              `Processed email history cleared — new emails will be picked up.\n` +
+              `Use \`@Clerk Kent stop pairings\` to stop.`
+            )
+            .setColor(0x2ecc71)
+            .setTimestamp()
+        ],
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('pairings_restart')
+              .setLabel('🔄 Restart Pipeline')
+              .setStyle(ButtonStyle.Secondary)
+          ),
+        ],
       });
     }
   }
