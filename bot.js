@@ -130,6 +130,18 @@ class ClerkKentBot {
       return;
     }
 
+    if (lowerContent === 'set coaches channel') {
+      const coachData = this.store.getCoaches();
+      if (!coachData) {
+        await message.reply('⚠️ No coach reports active. Use `@Clerk Kent report coaches <url>` first.');
+        return;
+      }
+      coachData.channelId = message.channel.id;
+      this.store.setCoaches(coachData);
+      await message.reply(`✅ Coach reports will now be sent to <#${message.channel.id}>.`);
+      return;
+    }
+
     if (lowerContent.startsWith('report ')) {
       await this.handleReport(message, content.slice(7).trim());
       return;
@@ -1536,6 +1548,7 @@ class ClerkKentBot {
         '`@Clerk Kent track <tabroom_url> <team_code>` — Register a team to track\n' +
         '`@Clerk Kent report <code>` — Get latest pairings & judge info for a team\n' +
         '`@Clerk Kent report coaches <judges_url>` — Track coaches from your schools\n' +
+        '`@Clerk Kent set coaches channel` — Send coach reports to this channel\n' +
         '`@Clerk Kent stop coaches` — Stop coach reports\n' +
         '`@Clerk Kent untrack <team_code>` — Stop tracking a team\n' +
         '`@Clerk Kent tournaments` — Show tracked tournaments\n' +
