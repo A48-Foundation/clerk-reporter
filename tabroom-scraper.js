@@ -331,13 +331,13 @@ class TabroomScraper {
 
     $('#judgelist tbody tr').each((_, row) => {
       const cells = $(row).find('td');
-      if (cells.length < 4) return;
+      if (cells.length < 3) return;
 
-      // Columns: Paradigm, First, Last, Institution, Location, ...
-      const firstName = $(cells[1]).text().trim();
-      const lastName = $(cells[2]).text().trim();
-      const institution = $(cells[3]).attr('data-text') || $(cells[3]).text().trim();
-      const location = $(cells[4]).text().trim();
+      // Columns: First(0), Last(1), Institution(2), Location(3), Rounds(4), Record(5)
+      const firstName = $(cells[0]).text().trim();
+      const lastName = $(cells[1]).text().trim();
+      const institution = $(cells[2]).attr('data-text') || $(cells[2]).text().trim();
+      const location = cells.length > 3 ? $(cells[3]).text().trim() : '';
 
       if (firstName && lastName) {
         judges.push({ firstName, lastName, institution, location });
