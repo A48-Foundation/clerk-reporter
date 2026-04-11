@@ -1297,13 +1297,14 @@ class ClerkKentBot {
       }
 
       // Parse all rows with td cells
+      // Authenticated view has columns: Paradigm(0), First(1), Last(2), Institution(3), Location(4), Rounds(5), Record(6)
       $('#judgelist tr').each((_, row) => {
         const cells = $(row).find('td');
-        if (cells.length < 3) return;
+        if (cells.length < 4) return;
 
-        const firstName = $(cells[0]).text().trim();
-        const lastName = $(cells[1]).text().trim();
-        const institution = $(cells[2]).attr('data-text') || $(cells[2]).text().trim();
+        const firstName = $(cells[1]).text().trim();
+        const lastName = $(cells[2]).text().trim();
+        const institution = $(cells[3]).attr('data-text') || $(cells[3]).text().trim();
 
         if (firstName && lastName) {
           allJudges.push({ firstName, lastName, institution });
