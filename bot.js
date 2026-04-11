@@ -1275,13 +1275,16 @@ class ClerkKentBot {
     try {
       await message.channel.sendTyping();
 
-      // Use ParadigmService's authenticated session (same as paradigm lookups)
+      // Force fresh login then fetch judges page
       const cheerio = require('cheerio');
+      this.paradigmService.loggedIn = false;
       const html = await this.paradigmService.fetchPage(url);
+      console.log(`[handleReportCoaches] Fetched page, length=${html.length}, has #judgelist=${html.includes('judgelist')}`);
       const $ = cheerio.load(html);
       const allJudges = [];
 
-      $('#judgelist tbody tr, #judgelist tr.smaller').each((_, row) => {
+      // Try multiple selectors — cheerio may or may not have tbody
+      $('#judgelist tr').each((_, row) => {
         const cells = $(row).find('td');
         if (cells.length < 3) return;
 
@@ -1297,7 +1300,7 @@ class ClerkKentBot {
       console.log(`[handleReportCoaches] Found ${allJudges.length} total judges on page`);
 
       if (allJudges.length === 0) {
-        await message.reply('⚠️ No judges found on that page.');
+        await message.reply(`⚠️ No judges found on that page. (Page length: ${html.length}, has judgelist table: ${html.includes('judgelist')})`);
         return;
       }
 
