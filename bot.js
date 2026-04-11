@@ -1283,7 +1283,20 @@ class ClerkKentBot {
       const $ = cheerio.load(html);
       const allJudges = [];
 
-      // Try multiple selectors — cheerio may or may not have tbody
+      // Debug: log table structure
+      const tableEl = $('#judgelist');
+      console.log(`[handleReportCoaches] #judgelist found: ${tableEl.length}`);
+      console.log(`[handleReportCoaches] #judgelist children: ${tableEl.children().map((i,el) => el.tagName).get().join(', ')}`);
+      const allRows = $('#judgelist tr');
+      console.log(`[handleReportCoaches] Total tr count: ${allRows.length}`);
+      if (allRows.length > 0) {
+        const firstRow = allRows.first();
+        const firstCells = firstRow.find('td, th');
+        console.log(`[handleReportCoaches] First row cells: ${firstCells.length}, tags: ${firstCells.map((i,el) => el.tagName).get().join(',')}`);
+        console.log(`[handleReportCoaches] First row HTML (200ch): ${firstRow.html().substring(0, 200)}`);
+      }
+
+      // Parse all rows with td cells
       $('#judgelist tr').each((_, row) => {
         const cells = $(row).find('td');
         if (cells.length < 3) return;
