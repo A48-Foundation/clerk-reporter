@@ -3,6 +3,7 @@ const fetch = require('node-fetch');
 const cheerio = require('cheerio');
 
 const BASE_URL = 'https://www.tabroom.com';
+const HTTP_TIMEOUT_MS = 30 * 1000; // 30s timeout for all HTTP requests
 
 class TabroomScraper {
   // Shared authenticated cookies (set via login())
@@ -22,7 +23,7 @@ class TabroomScraper {
     if (!email || !password) throw new Error('TABROOM_EMAIL and TABROOM_PASSWORD required');
 
     // GET login page for hidden fields
-    const loginPage = await fetch(`${BASE_URL}/user/login/login.mhtml`, { redirect: 'manual' });
+    const loginPage = await fetch(`${BASE_URL}/user/login/login.mhtml`, { redirect: 'manual', timeout: HTTP_TIMEOUT_MS });
     this._mergeCookies(loginPage);
 
     const html = await loginPage.text();
@@ -41,6 +42,7 @@ class TabroomScraper {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: this._cookies },
       body: params.toString(),
       redirect: 'manual',
+      timeout: HTTP_TIMEOUT_MS,
     });
     this._mergeCookies(loginRes);
 
@@ -69,7 +71,11 @@ class TabroomScraper {
    */
   static async authenticatedFetch(url) {
     if (!this._loggedIn) await this.login();
-    const res = await fetch(url, { headers: { Cookie: this._cookies }, redirect: 'follow' });
+    const res = await fetch(url, {
+      headers: { Cookie: this._cookies },
+      redirect: 'follow',
+      timeout: HTTP_TIMEOUT_MS,
+    });
     this._mergeCookies(res);
     return res.text();
   }
@@ -79,7 +85,7 @@ class TabroomScraper {
    */
   static fetch(url) {
     return new Promise((resolve, reject) => {
-      https.get(url, (res) => {
+      const req = https.get(url, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           return TabroomScraper.fetch(res.headers.location).then(resolve).catch(reject);
         }
@@ -87,7 +93,11 @@ class TabroomScraper {
         res.on('data', chunk => data += chunk);
         res.on('end', () => resolve(data));
         res.on('error', reject);
-      }).on('error', reject);
+      });
+      req.on('error', reject);
+      req.setTimeout(HTTP_TIMEOUT_MS, () => {
+        req.destroy(new Error(`Request to ${url} timed out after ${HTTP_TIMEOUT_MS / 1000}s`));
+      });
     });
   }
 

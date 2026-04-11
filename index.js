@@ -20,8 +20,26 @@ if (!process.env.IMAP_EMAIL) {
   console.warn('⚠️  IMAP_EMAIL not set — email-based pairings pipeline will be unavailable.');
 }
 
+// ── Crash guards — keep the process alive for multi-day runs ──
+process.on('uncaughtException', (err) => {
+  console.error('‼️  Uncaught exception (process kept alive):', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('‼️  Unhandled rejection (process kept alive):', reason);
+});
+
 const bot = new ClerkKentBot();
 bot.start().catch(err => {
   console.error('❌ Failed to start Clerk Kent:', err);
   process.exit(1);
 });
+
+// ── Graceful shutdown ──
+function shutdown(signal) {
+  console.log(`\n🛑 Received ${signal} — shutting down gracefully…`);
+  try { bot.client.destroy(); } catch (_) {}
+  process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

@@ -4,6 +4,7 @@ const NotionService = require('./notion-service');
 const { EmbedBuilder } = require('discord.js');
 
 const POLL_INTERVAL_MS = 2 * 60 * 1000; // Check every 2 minutes
+const HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000; // Log a heartbeat every 30 minutes
 
 class PairingsPoller {
   constructor(discordClient) {
@@ -11,6 +12,8 @@ class PairingsPoller {
     this.store = new TournamentStore();
     this.notion = new NotionService();
     this.interval = null;
+    this._heartbeat = null;
+    this._pollCount = 0;
   }
 
   /**
@@ -19,6 +22,9 @@ class PairingsPoller {
   start() {
     console.log(`🔄 Pairings poller started (every ${POLL_INTERVAL_MS / 1000}s)`);
     this.interval = setInterval(() => this.poll(), POLL_INTERVAL_MS);
+    this._heartbeat = setInterval(() => {
+      console.log(`💓 Pairings poller alive — ${this._pollCount} polls completed, tracking ${this.store.getAllTournaments().length} tournament(s)`);
+    }, HEARTBEAT_INTERVAL_MS);
     // Also run once immediately after a short delay (let cache load)
     setTimeout(() => this.poll(), 5000);
   }
@@ -27,6 +33,10 @@ class PairingsPoller {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
+    }
+    if (this._heartbeat) {
+      clearInterval(this._heartbeat);
+      this._heartbeat = null;
     }
   }
 
@@ -44,6 +54,7 @@ class PairingsPoller {
         console.error(`Error polling tournament ${tourn.tournId}:`, err.message);
       }
     }
+    this._pollCount++;
   }
 
   /**
