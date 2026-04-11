@@ -5,6 +5,7 @@ const BASE_URL = 'https://www.tabroom.com';
 const LOGIN_URL = `${BASE_URL}/user/login/login.mhtml`;
 const LOGIN_POST_URL = `${BASE_URL}/user/login/login_save.mhtml`;
 const PARADIGM_SEARCH_URL = `${BASE_URL}/index/paradigm.mhtml`;
+const HTTP_TIMEOUT_MS = 30 * 1000; // 30s timeout for all HTTP requests
 
 class ParadigmService {
   constructor() {
@@ -22,6 +23,7 @@ class ParadigmService {
     const res = await fetch(url, {
       ...options,
       redirect: 'manual',
+      timeout: HTTP_TIMEOUT_MS,
       headers: {
         ...(options.headers || {}),
         ...(this.cookies ? { Cookie: this.cookies } : {}),

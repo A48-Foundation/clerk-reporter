@@ -778,25 +778,33 @@ class ClerkKentBot {
         let paradigmUrl = null;
         let school = null;
 
-        const paradigm = await this.paradigmService.fetchParadigmByName(judgeName);
-        if (paradigm) {
-          paradigmUrl = paradigm.paradigmUrl;
-          school = paradigm.school;
-          if (paradigm.philosophy) {
-            paradigmSummary = await this.llmService.summarizeParadigm(paradigm.philosophy);
+        try {
+          const paradigm = await this.paradigmService.fetchParadigmByName(judgeName);
+          if (paradigm) {
+            paradigmUrl = paradigm.paradigmUrl;
+            school = paradigm.school;
+            if (paradigm.philosophy) {
+              paradigmSummary = await this.llmService.summarizeParadigm(paradigm.philosophy);
+            }
           }
+        } catch (err) {
+          console.error(`[Pairing] Failed to fetch paradigm for ${judgeName}:`, err.message);
         }
 
         let notionNotes = null;
         let notionUrl = null;
-        const notionResults = await this.notion.searchJudge(judgeName);
-        if (notionResults.length > 0) {
-          const j = notionResults[0];
-          notionUrl = j.url || null;
-          if (j.comments && j.comments.length > 0) {
-            notionNotes = j.comments.map((c, i) => `**${i + 1}.** ${c}`).join('\n');
-            if (notionNotes.length > 500) notionNotes = notionNotes.slice(0, 497) + '...';
+        try {
+          const notionResults = await this.notion.searchJudge(judgeName);
+          if (notionResults.length > 0) {
+            const j = notionResults[0];
+            notionUrl = j.url || null;
+            if (j.comments && j.comments.length > 0) {
+              notionNotes = j.comments.map((c, i) => `**${i + 1}.** ${c}`).join('\n');
+              if (notionNotes.length > 500) notionNotes = notionNotes.slice(0, 497) + '...';
+            }
           }
+        } catch (err) {
+          console.error(`[Pairing] Failed to fetch Notion data for ${judgeName}:`, err.message);
         }
 
         return { name: judgeName, paradigmSummary, paradigmUrl, school, notionNotes, notionUrl };
