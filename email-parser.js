@@ -47,6 +47,18 @@ class EmailParser {
       };
     }
 
+    // Format A (no event): "[TAB] CoachName Round N" — coach judging assignments
+    const coachMatch = subject.match(/^\[TAB\]\s+(.+?)\s+Round\s+(\d+)\s*$/i);
+    if (coachMatch) {
+      return {
+        teamCode: coachMatch[1].trim(),
+        roundNumber: parseInt(coachMatch[2], 10),
+        event: null,
+        format: 'liveUpdate',
+        school: null,
+      };
+    }
+
     // Format A (elim): "[TAB] TeamCode ElimName Event"
     const elimMatch = subject.match(/^\[TAB\]\s+(.+?)\s+(Doubles|Octas|Quarters|Semis|Finals|Triples|Round\s+of\s+\d+)\s+(.+)$/i);
     if (elimMatch) {
@@ -321,8 +333,8 @@ class EmailParser {
     // If dominated by negative signals and no positive signals, reject
     if (negBodySignals >= 2 && posSignals === 0) return false;
 
-    // Subject-based strong positive: "[TAB] Team Round N Event" or elim round name
-    if (/\[TAB\].+(?:Round\s+\d+|Doubles|Octas|Quarters|Semis|Finals|Triples)\s+/i.test(subject)) return posSignals >= 1 || true;
+    // Subject-based strong positive: "[TAB] Team Round N Event" or "[TAB] Coach Round N" or elim round name
+    if (/\[TAB\].+(?:Round\s+\d+|Doubles|Octas|Quarters|Semis|Finals|Triples)/i.test(subject)) return posSignals >= 1 || true;
 
     // Subject-based moderate positive: "[TAB] School Round Assignments"
     // Requires body confirmation
