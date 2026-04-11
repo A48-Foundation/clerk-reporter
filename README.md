@@ -95,6 +95,21 @@ Fetches the latest round's pairing and judge info for a tracked team. Use just t
 
 Remove a tracked team, or list all active tournament trackings.
 
+#### Health Check
+
+```
+@Clerk Kent poll test
+```
+
+Runs a live diagnostic and replies with a status embed showing:
+- **Discord** — connection status
+- **Email Monitor** — INBOX state and last successful poll time
+- **Tabroom** — live connectivity test against a tracked tournament
+- **Notion** — judge cache status and count
+- **Uptime** — how long the bot has been running (e.g. `2d 5h 13m`)
+
+Also responds to `@Clerk Kent health` and `@Clerk Kent alive`.
+
 #### Judge Lookup
 
 ```
@@ -152,7 +167,7 @@ Non-pairing emails (check-in notices, registration reminders, payment info) are 
 ### Architecture
 
 ```
-index.js                  Entry point — env validation, bot startup
+index.js                  Entry point — env validation, crash guards, graceful shutdown
   └─ bot.js               Discord command handler + pairings pipeline orchestrator
        ├─ email-monitor.js       Gmail IMAP poller → emits 'pairing' events
        ├─ email-parser.js        Parses email subject/body → structured pairing data
@@ -164,8 +179,8 @@ index.js                  Entry point — env validation, bot startup
        ├─ report-builder.js      Builds Discord embed arrays
        ├─ tournament-store.js    JSON file persistence for sessions + tracking
        ├─ notion-service.js      Notion API — judge search with Fuse.js fuzzy matching
-       ├─ tabroom-scraper.js     Scrapes Tabroom pairings HTML pages
-       └─ pairings-poller.js     Legacy polling-based round checker
+       ├─ tabroom-scraper.js     Scrapes Tabroom pairings HTML pages (30s request timeouts)
+       └─ pairings-poller.js     Polling-based round checker with heartbeat logging
 ```
 
 ### Data Flow
@@ -327,7 +342,7 @@ npm start
 npm test
 ```
 
-The test suite includes **173 tests** across 6 files:
+The test suite includes **176 tests** across 6 files:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
@@ -367,6 +382,14 @@ Test fixtures live in `tests/fixtures/emails.js` — real email samples with pre
 - Stores to `tournaments.json` with format: `{ tournaments: {...}, activeSession: {...}, settings: {...} }`
 - Tracks processed email UIDs to prevent duplicate reports
 - `settings.ourAff` persists the team's current aff name across sessions (default: "PNT")
+
+**Reliability (multi-day uptime)**:
+- `uncaughtException` and `unhandledRejection` handlers in `index.js` log errors without crashing the process
+- All HTTP requests in `tabroom-scraper.js` have a 30-second timeout to prevent hung connections from blocking the poll loop
+- Graceful shutdown on `SIGTERM`/`SIGINT` cleanly destroys the Discord client
+- Email monitor has a watchdog timer, exponential backoff reconnect, and per-poll timeouts
+- Pairings poller logs a heartbeat to stdout every 30 minutes
+- `@Clerk Kent poll test` command provides a live health check from Discord
 
 ---
 
