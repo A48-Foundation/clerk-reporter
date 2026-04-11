@@ -481,8 +481,9 @@ class ClerkKentBot {
         this.emailMonitor = null;
       }
 
-      // Clear processed emails so the monitor starts fresh
+      // Clear processed emails and reported pairings so the monitor starts fresh
       session.processedEmailUids = [];
+      session.reportedPairings = [];
       session.emailMonitorActive = true;
       this.store.save();
 
@@ -713,6 +714,14 @@ class ClerkKentBot {
     const { ourTeamCode, opponentCode, opponentSide, side, room, judges,
             roundTitle, startTime, roundNumber, aff, neg } = pairing;
 
+    // Deduplicate: skip if we already sent a report for this team+round
+    const dedupKey = `${ourTeamCode}::${roundTitle || ''}::${roundNumber || ''}`.toLowerCase();
+    if (this.store.isPairingReported(dedupKey)) {
+      console.log(`[Pairing] Skipping duplicate report for ${ourTeamCode} in ${roundTitle || 'Round ' + roundNumber}`);
+      return;
+    }
+    this.store.markPairingReported(dedupKey);
+
     // Find the channel for our team
     const channelId = session.channelMappings[ourTeamCode];
     if (!channelId) {
@@ -822,7 +831,15 @@ class ClerkKentBot {
       const n = j.name;
       return n && n.length >= 3 && !/^-+$/.test(n) && !/^(thanks|sent from|cheers)/i.test(n);
     });
-    for (const judge of validJudges) {
+    // Deduplicate judges by name (Tabroom emails sometimes list the same judge twice)
+    const seenNames = new Set();
+    const uniqueJudges = validJudges.filter(j => {
+      const key = j.name.toLowerCase().trim();
+      if (seenNames.has(key)) return false;
+      seenNames.add(key);
+      return true;
+    });
+    for (const judge of uniqueJudges) {
       initialEmbeds.push(this.reportBuilder.buildJudgeEmbed({
         name: judge.name,
         paradigmSummary: '_⏳ Loading paradigm..._',
@@ -836,8 +853,8 @@ class ClerkKentBot {
     }
 
     // Phase 2: Fetch all judge paradigms in parallel, then edit the message
-    if (sentMessage && validJudges.length > 0) {
-      const judgePromises = validJudges.map(async (judge) => {
+    if (sentMessage && uniqueJudges.length > 0) {
+      const judgePromises = uniqueJudges.map(async (judge) => {
         const judgeName = judge.name;
         let paradigmSummary = null;
         let paradigmUrl = null;

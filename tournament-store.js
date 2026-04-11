@@ -282,6 +282,22 @@ class TournamentStore {
     );
     return entry ? entry.entry : null;
   }
+  /**
+   * Track which team+round pairings have already been reported to avoid duplicates
+   * (e.g. when Tabroom sends both a live update and a round assignments email).
+   */
+  isPairingReported(dedupKey) {
+    return this.activeSession?.reportedPairings?.includes(dedupKey) || false;
+  }
+
+  markPairingReported(dedupKey) {
+    if (!this.activeSession) return;
+    if (!this.activeSession.reportedPairings) this.activeSession.reportedPairings = [];
+    if (!this.activeSession.reportedPairings.includes(dedupKey)) {
+      this.activeSession.reportedPairings.push(dedupKey);
+      this.save();
+    }
+  }
 }
 
 module.exports = TournamentStore;
