@@ -113,6 +113,11 @@ class ClerkKentBot {
       return;
     }
 
+    if (lowerContent === 'poll test' || lowerContent === 'health' || lowerContent === 'alive') {
+      await this.handlePollTest(message);
+      return;
+    }
+
     if (lowerContent.startsWith('report ')) {
       await this.handleReport(message, content.slice(7).trim());
       return;
@@ -1197,6 +1202,90 @@ class ClerkKentBot {
   /**
    * Build a help embed when the bot is mentioned without a judge name.
    */
+  /**
+   * Handle: @Clerk Kent poll test / health / alive
+   * Runs a live diagnostic: checks Discord, email monitor, Tabroom connectivity,
+   * and Notion cache, then replies with a status embed.
+   */
+  async handlePollTest(message) {
+    await message.channel.sendTyping();
+    const start = Date.now();
+    const checks = [];
+
+    // 1. Discord — if we got here, it's working
+    checks.push({ name: '🟢 Discord', value: 'Connected', ok: true });
+
+    // 2. Email monitor
+    const session = this.store.getActiveSession();
+    if (this.emailMonitor) {
+      const connected = this.emailMonitor._imap && this.emailMonitor._inboxOpen;
+      const lastPoll = this.emailMonitor._lastSuccessfulPoll;
+      const ago = lastPoll ? `${Math.round((Date.now() - lastPoll) / 1000)}s ago` : 'never';
+      checks.push({
+        name: connected ? '🟢 Email Monitor' : '🟡 Email Monitor',
+        value: connected ? `INBOX open · last poll ${ago}` : `Reconnecting · last poll ${ago}`,
+        ok: connected,
+      });
+    } else if (session && session.emailMonitorActive) {
+      checks.push({ name: '🔴 Email Monitor', value: 'Session active but monitor not running', ok: false });
+    } else {
+      checks.push({ name: '⚪ Email Monitor', value: 'Not active (no pairings session)', ok: true });
+    }
+
+    // 3. Tabroom connectivity — try fetching the postings index for a tracked tournament
+    const tournaments = this.store.getAllTournaments();
+    const tournIds = Object.keys(this.store.tournaments);
+    const testTournId = session?.tournId || (tournIds.length > 0 ? tournIds[0] : null);
+    if (testTournId) {
+      try {
+        const rounds = await TabroomScraper.getRounds(testTournId);
+        checks.push({
+          name: '🟢 Tabroom',
+          value: `Reachable · ${rounds.length} round(s) found for tournament ${testTournId}`,
+          ok: true,
+        });
+      } catch (err) {
+        checks.push({ name: '🔴 Tabroom', value: `Unreachable: ${err.message}`, ok: false });
+      }
+    } else {
+      checks.push({ name: '⚪ Tabroom', value: 'No tournament to test (none tracked)', ok: true });
+    }
+
+    // 4. Notion cache
+    try {
+      await this.notion.refreshCache();
+      checks.push({
+        name: '🟢 Notion',
+        value: `${this.notion.judgeCache.length} judges cached`,
+        ok: true,
+      });
+    } catch (err) {
+      checks.push({ name: '🔴 Notion', value: `Error: ${err.message}`, ok: false });
+    }
+
+    // 5. Uptime
+    const uptimeSec = process.uptime();
+    const days = Math.floor(uptimeSec / 86400);
+    const hours = Math.floor((uptimeSec % 86400) / 3600);
+    const mins = Math.floor((uptimeSec % 3600) / 60);
+    const uptimeStr = days > 0 ? `${days}d ${hours}h ${mins}m` : hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+    const allOk = checks.every(c => c.ok);
+    const elapsed = Date.now() - start;
+
+    const embed = new EmbedBuilder()
+      .setTitle(allOk ? '💓 I\'m alive! All systems operational.' : '⚠️ I\'m alive, but some systems need attention.')
+      .setColor(allOk ? 0x2ecc71 : 0xf39c12)
+      .setDescription(`Uptime: **${uptimeStr}** · Diagnostic took ${elapsed}ms`)
+      .setTimestamp();
+
+    for (const check of checks) {
+      embed.addFields({ name: check.name, value: check.value, inline: true });
+    }
+
+    await message.reply({ embeds: [embed] });
+  }
+
   buildHelpEmbed() {
     return new EmbedBuilder()
       .setTitle('⚖️ Clerk Kent — Judge Lookup & Pairings Bot')
@@ -1216,7 +1305,8 @@ class ClerkKentBot {
         '`@Clerk Kent track <tabroom_url> <team_code>` — Register a team to track\n' +
         '`@Clerk Kent report <code>` — Get latest pairings & judge info for a team\n' +
         '`@Clerk Kent untrack <team_code>` — Stop tracking a team\n' +
-        '`@Clerk Kent tournaments` — Show tracked tournaments\n\n' +
+        '`@Clerk Kent tournaments` — Show tracked tournaments\n' +
+        '`@Clerk Kent poll test` — Run a health check on all systems\n\n' +
         '**Examples:**\n' +
         '`@Clerk Kent Smith` — Judge lookup\n' +
         '`@Clerk Kent set schools Dartmouth`\n' +
