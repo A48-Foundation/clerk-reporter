@@ -325,7 +325,7 @@ class TabroomScraper {
    * Returns array of { firstName, lastName, institution, location }
    */
   static async scrapeJudges(url) {
-    const html = await this.fetch(url);
+    const html = await this.authenticatedFetch(url);
     const $ = cheerio.load(html);
     const judges = [];
 
