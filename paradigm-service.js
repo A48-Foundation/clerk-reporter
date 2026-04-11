@@ -13,7 +13,10 @@ class ParadigmService {
     this.password = process.env.TABROOM_PASSWORD;
     this.cookies = '';
     this.loggedIn = false;
+    this._loginTime = 0;
   }
+
+  static LOGIN_TTL = 30 * 60 * 1000; // re-login after 30 minutes
 
   /**
    * Perform an HTTP request with cookie handling and manual redirect control.
@@ -104,8 +107,10 @@ class ParadigmService {
 
     // A successful login typically redirects to the user home page
     if (loginRes.body.includes('Sign Out') || loginRes.body.includes('Logout') ||
-        loginRes.body.includes('/user/home') || loginRes.status === 200) {
+        loginRes.body.includes('/user/home')) {
       this.loggedIn = true;
+      this._loginTime = Date.now();
+      console.log('[ParadigmService] Tabroom login successful');
       return true;
     }
 
@@ -118,20 +123,51 @@ class ParadigmService {
    */
   async searchJudge(firstName, lastName) {
     // Ensure we're authenticated (Tabroom requires login for paradigm search)
-    if (!this.loggedIn) {
+    const sessionExpired = this.loggedIn && (Date.now() - this._loginTime > ParadigmService.LOGIN_TTL);
+    if (!this.loggedIn || sessionExpired) {
+      if (sessionExpired) console.log('[ParadigmService] Session expired — re-authenticating');
+      this.loggedIn = false;
       try { await this.login(); } catch (e) { console.warn('[ParadigmService] Login failed:', e.message); }
     }
 
     const url = `${PARADIGM_SEARCH_URL}?search_first=${encodeURIComponent(firstName)}&search_last=${encodeURIComponent(lastName)}`;
 
+    const result = await this._searchJudgeRequest(url);
+
+    // If we got the login page back, force re-login and retry once
+    if (result._gotLoginPage && this.loggedIn) {
+      console.log(`[ParadigmService] Session stale for ${firstName} ${lastName} — forcing re-login`);
+      this.loggedIn = false;
+      try { await this.login(); } catch (e) { console.warn('[ParadigmService] Re-login failed:', e.message); return []; }
+      return (await this._searchJudgeRequest(url)).results;
+    }
+
+    return result.results;
+  }
+
+  /**
+   * Internal: perform the paradigm search request and parse results.
+   * Returns { results: [...], _gotLoginPage: boolean }
+   */
+  async _searchJudgeRequest(url) {
     // Don't follow redirects automatically — a single result redirects to the paradigm page
     const initial = await this._fetch(url);
+
+    // Detect login page — Tabroom returns 200 with "Please login to view paradigms"
+    if (initial.body && /Please login to view paradigms/i.test(initial.body)) {
+      return { results: [], _gotLoginPage: true };
+    }
 
     // Single-result redirect: Tabroom sends a 302 to the paradigm page
     if (initial.status >= 300 && initial.status < 400 && initial.location) {
       const redirectUrl = initial.location.startsWith('http')
         ? initial.location
         : new URL(initial.location, url).toString();
+
+      // Check if redirect is to login page
+      if (/login/i.test(redirectUrl)) {
+        return { results: [], _gotLoginPage: true };
+      }
 
       const parsed = new URL(redirectUrl);
       const judgePersonId = parsed.searchParams.get('judge_person_id');
@@ -140,11 +176,11 @@ class ParadigmService {
       const pageRes = await this._fetchFollowRedirects(redirectUrl);
       const info = this._parseParadigmPage(pageRes.body);
 
-      return [{
-        name: info.name || `${firstName} ${lastName}`,
+      return { results: [{
+        name: info.name || 'Unknown',
         judgePersonId: judgePersonId || null,
         paradigmUrl: redirectUrl,
-      }];
+      }], _gotLoginPage: false };
     }
 
     // Multi-result page: parse the list of judge links
@@ -179,7 +215,7 @@ class ParadigmService {
       }
     });
 
-    return results;
+    return { results, _gotLoginPage: false };
   }
 
   /**
