@@ -130,15 +130,37 @@ class ClerkKentBot {
       return;
     }
 
-    if (lowerContent === 'set coaches channel') {
+    if (lowerContent.startsWith('set coaches channel')) {
       const coachData = this.store.getCoaches();
       if (!coachData) {
         await message.reply('⚠️ No coach reports active. Use `@Clerk Kent report coaches <url>` first.');
         return;
       }
-      coachData.channelId = message.channel.id;
+
+      // Check for a #channel mention or channel name argument
+      const channelMention = message.mentions.channels.first();
+      const arg = content.replace(/^set\s+coaches\s+channel\s*/i, '').trim();
+
+      let targetChannel = null;
+      if (channelMention) {
+        targetChannel = channelMention;
+      } else if (arg) {
+        // Find channel by name (case-insensitive)
+        targetChannel = message.guild.channels.cache.find(
+          ch => ch.name.toLowerCase() === arg.toLowerCase() && ch.isTextBased()
+        );
+      } else {
+        targetChannel = message.channel;
+      }
+
+      if (!targetChannel) {
+        await message.reply(`⚠️ Could not find a channel named **${arg}**. Try a #mention or exact name.`);
+        return;
+      }
+
+      coachData.channelId = targetChannel.id;
       this.store.setCoaches(coachData);
-      await message.reply(`✅ Coach reports will now be sent to <#${message.channel.id}>.`);
+      await message.reply(`✅ Coach reports will now be sent to <#${targetChannel.id}>.`);
       return;
     }
 
