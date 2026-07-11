@@ -1,20 +1,45 @@
-const OpenAI = require('openai');
-const ParadigmSummarizer = require('./paradigm-summarizer');
+// NOTE: `openai` (~7 MB) and `./paradigm-summarizer` are intentionally NOT
+// required at module load. They're pulled in lazily on first use (see the
+// `client` / `paradigmSummarizer` getters) so an idle bot that never runs an
+// LLM call keeps them out of the heap.
 
 class LlmService {
   constructor() {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (apiKey) {
-      this.client = new OpenAI({ apiKey });
-      this.enabled = true;
-      this.paradigmSummarizer = new ParadigmSummarizer(apiKey);
-    } else {
+    this._apiKey = process.env.OPENAI_API_KEY || null;
+    this.enabled = !!this._apiKey;
+    if (!this.enabled) {
       console.warn('[LlmService] No OPENAI_API_KEY found — falling back to non-LLM summaries.');
-      this.client = null;
-      this.enabled = false;
-      this.paradigmSummarizer = null;
     }
+    this._client = null;
+    this._summarizer = null;
     this.model = 'gpt-4o-mini';
+  }
+
+  /**
+   * Lazily-constructed OpenAI client. Loading the SDK and building the client
+   * is deferred until the first LLM call (e.g. email-parser fallback or a
+   * `judge summary`). Returns null when no API key is configured.
+   */
+  get client() {
+    if (!this.enabled) return null;
+    if (!this._client) {
+      const OpenAI = require('openai');
+      this._client = new OpenAI({ apiKey: this._apiKey });
+    }
+    return this._client;
+  }
+
+  /**
+   * Lazily-constructed paradigm summarizer (also pulls in the OpenAI SDK).
+   * Returns null when no API key is configured.
+   */
+  get paradigmSummarizer() {
+    if (!this.enabled) return null;
+    if (!this._summarizer) {
+      const ParadigmSummarizer = require('./paradigm-summarizer');
+      this._summarizer = new ParadigmSummarizer(this._apiKey);
+    }
+    return this._summarizer;
   }
 
   /**
