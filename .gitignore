@@ -4,6 +4,9 @@
 # Tournament tracking data
 tournaments.json
 
+# Pre-cached opponent / paradigm data
+cache/
+
 # Dependencies
 node_modules/
 
