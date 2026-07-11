@@ -76,37 +76,17 @@ class ReportBuilder {
   buildJudgeEmbed(judgeData) {
     const {
       name = 'Unknown Judge',
-      paradigmSummary,
       paradigmUrl,
       notionNotes,
-      notionUrl,
     } = judgeData || {};
 
-    const truncatedParadigm =
-      paradigmSummary && paradigmSummary.length > 1000
-        ? paradigmSummary.slice(0, 997) + '...'
-        : paradigmSummary;
-
     const fields = [
-      {
-        name: 'Paradigm Summary',
-        value: truncatedParadigm || 'Not found',
-        inline: false,
-      },
       {
         name: 'Paradigm Link',
         value: paradigmUrl ? `[View Paradigm](${paradigmUrl})` : 'N/A',
         inline: true,
       },
     ];
-
-    if (notionUrl) {
-      fields.push({
-        name: 'Notion',
-        value: `[Judge Report](${notionUrl})`,
-        inline: true,
-      });
-    }
 
     if (notionNotes) {
       fields.push({

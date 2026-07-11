@@ -1094,7 +1094,6 @@ class ClerkKentBot {
     for (const judge of uniqueJudges) {
       initialEmbeds.push(this.reportBuilder.buildJudgeEmbed({
         name: judge.name,
-        paradigmSummary: '_⏳ Fetching judge info..._',
       }));
     }
 
@@ -1108,7 +1107,6 @@ class ClerkKentBot {
     // the message. AI paradigm summaries are intentionally NOT generated here
     // (they're slow + pull in the LLM); run `@Clerk Kent judge summary` on demand.
     if (sentMessage && uniqueJudges.length > 0) {
-      const SUMMARY_HINT = '_Run `@Clerk Kent judge summary` for an AI paradigm summary._';
       const judgePromises = uniqueJudges.map(async (judge) => {
         const judgeName = judge.name;
         let paradigmUrl = null;
@@ -1144,7 +1142,6 @@ class ClerkKentBot {
 
         return {
           name: judgeName,
-          paradigmSummary: paradigmUrl ? SUMMARY_HINT : '_No paradigm found._',
           paradigmUrl, school, philosophy, notionNotes, notionUrl,
         };
       });
@@ -1262,13 +1259,11 @@ class ClerkKentBot {
       } else {
         summary = '_No paradigm text available._';
       }
-      return this.reportBuilder.buildJudgeEmbed({
-        name: j.name,
-        paradigmSummary: summary,
-        paradigmUrl: j.paradigmUrl,
-        notionNotes: j.notionNotes,
-        notionUrl: j.notionUrl,
-      });
+      const truncated = summary.length > 4000 ? summary.slice(0, 3997) + '...' : summary;
+      return new EmbedBuilder()
+        .setTitle(`⚖️ ${j.name}`)
+        .setColor(0x2f80ed)
+        .setDescription(truncated);
     }));
 
     try {

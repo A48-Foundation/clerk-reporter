@@ -129,10 +129,8 @@ describe('ReportBuilder', () => {
     test('full judge data produces correct embed', () => {
       const judge = {
         name: 'Jenny Liu',
-        paradigmSummary: 'Policy judge, prefers tech over truth.',
         paradigmUrl: 'https://tabroom.com/paradigm?id=123',
         notionNotes: '**1.** Good judge for K debates',
-        notionUrl: 'https://notion.so/abc',
       };
 
       const embed = builder.buildJudgeEmbed(judge);
@@ -144,9 +142,7 @@ describe('ReportBuilder', () => {
         embed.data.fields.map((f) => [f.name, f]),
       );
 
-      expect(fieldMap['Paradigm Summary'].value).toBe(
-        'Policy judge, prefers tech over truth.',
-      );
+      expect(fieldMap['Paradigm Summary']).toBeUndefined();
       expect(fieldMap['Paradigm Link'].value).toContain('[View Paradigm]');
       expect(fieldMap['**Comments**'].value).toContain('Good judge for K debates');
     });
@@ -157,29 +153,9 @@ describe('ReportBuilder', () => {
       const fieldMap = Object.fromEntries(
         embed.data.fields.map((f) => [f.name, f]),
       );
-      expect(fieldMap['Paradigm Summary'].value).toBe('Not found');
+      expect(fieldMap['Paradigm Summary']).toBeUndefined();
       expect(fieldMap['Paradigm Link'].value).toBe('N/A');
       expect(fieldMap['**Comments**']).toBeUndefined();
-    });
-
-    test('paradigm > 1000 chars gets truncated', () => {
-      const judge = { name: 'Verbose', paradigmSummary: 'A'.repeat(1500) };
-      const embed = builder.buildJudgeEmbed(judge);
-      const fieldMap = Object.fromEntries(
-        embed.data.fields.map((f) => [f.name, f]),
-      );
-      expect(fieldMap['Paradigm Summary'].value.length).toBe(1000);
-      expect(fieldMap['Paradigm Summary'].value).toMatch(/\.\.\.$/);
-    });
-
-    test('paradigm exactly 1000 chars is not truncated', () => {
-      const exact = 'B'.repeat(1000);
-      const judge = { name: 'Exact', paradigmSummary: exact };
-      const embed = builder.buildJudgeEmbed(judge);
-      const fieldMap = Object.fromEntries(
-        embed.data.fields.map((f) => [f.name, f]),
-      );
-      expect(fieldMap['Paradigm Summary'].value).toBe(exact);
     });
 
     test('null input does not throw', () => {
