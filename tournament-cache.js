@@ -79,6 +79,48 @@ class TournamentCache {
   _write(kind, tournId, data) {
     this._mem[`${kind}:${tournId}`] = data;
     fs.writeFileSync(this._file(kind, tournId), JSON.stringify(data, null, 2));
+    this._purgeOtherTournaments(kind, tournId);
+  }
+
+  /**
+   * Keep only the most recently primed tournament's cache for a given kind:
+   * priming a new tournament replaces the old one on disk and in memory, so
+   * stale tournaments don't accumulate (bounded disk + resident footprint).
+   */
+  _purgeOtherTournaments(kind, tournId) {
+    try {
+      const keep = path.basename(this._file(kind, tournId));
+      const prefix = `${kind}-`;
+      for (const name of fs.readdirSync(this.cacheDir)) {
+        if (name.startsWith(prefix) && name.endsWith('.json') && name !== keep) {
+          try { fs.unlinkSync(path.join(this.cacheDir, name)); } catch (_) { /* ignore */ }
+          const oldId = name.slice(prefix.length, -'.json'.length);
+          delete this._mem[`${kind}:${oldId}`];
+        }
+      }
+    } catch (err) {
+      console.warn(`[TournamentCache] Failed to purge old ${kind} caches:`, err.message);
+    }
+  }
+
+  /**
+   * Delete every cached opponents/paradigms file and drop the in-memory copies.
+   * Used by the `end` command to reclaim disk and heap between tournaments.
+   * @returns {number} number of files removed
+   */
+  clearAll() {
+    let removed = 0;
+    try {
+      for (const name of fs.readdirSync(this.cacheDir)) {
+        if (/^(opponents|paradigms)-.*\.json$/.test(name)) {
+          try { fs.unlinkSync(path.join(this.cacheDir, name)); removed++; } catch (_) { /* ignore */ }
+        }
+      }
+    } catch (err) {
+      console.warn('[TournamentCache] Failed to clear caches:', err.message);
+    }
+    this._mem = {};
+    return removed;
   }
 
   // ── Opponents (OpenCaselist lookups) ──────────────────────────────

@@ -59,6 +59,22 @@ Manually add a team to the active session's tracking. Useful when a team wasn't 
 
 Deactivates the email monitor and clears the session.
 
+```
+@Clerk Kent end
+```
+
+Ends the tournament: stops the email monitor, clears the session, **and wipes all primed caches** (opponent + judge files on disk plus in-memory data) to reclaim resources between events.
+
+#### Judge Paradigm Summaries (on demand)
+
+Pairing reports show each judge's paradigm **link** and any Notion notes, but **not** an AI paradigm summary (to keep reports fast and cheap). To generate AI summaries for the judges in the most recent pairing report posted in a channel:
+
+```
+@Clerk Kent judge summary
+```
+
+The bot remembers only the most recent round per channel.
+
 #### Pre-cache a Tournament (Opponents & Paradigms)
 
 Before or during a tournament, you can **prime a cache** so live reports read from disk instead of hitting OpenCaselist / Tabroom on the critical path (faster reports, fewer live requests).
@@ -82,7 +98,7 @@ Scrapes the tournament's judges-list page and, for every judge, pre-fetches thei
 @Clerk Kent cache paradigms https://www.tabroom.com/index/tourn/judges.mhtml?category_id=85045&tourn_id=32045
 ```
 
-Caches are keyed by Tabroom `tourn_id` and stored in `cache/` (git-ignored, ephemeral on Railway). When a live pairing report runs, if a cache exists for the active session's tournament, the bot serves opponent/judge data from it. **Cache misses** (a team or judge that wasn't primed — e.g. added late) automatically fall back to a live lookup. Re-run a `cache` command to refresh.
+Caches are keyed by Tabroom `tourn_id` and stored in `cache/` (git-ignored, ephemeral on Railway). Priming a new tournament **replaces** any previously cached tournament (only one is kept at a time). When a live pairing report runs, if a cache exists for the active session's tournament, the bot serves opponent/judge data from it. **Cache misses** (a team or judge that wasn't primed — e.g. added late) automatically fall back to a live lookup. Re-run a `cache` command to refresh, or `@Clerk Kent end` to wipe caches entirely.
 
 #### Set Your Aff
 

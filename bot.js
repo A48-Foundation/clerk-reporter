@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, Events,
+const { Client, GatewayIntentBits, EmbedBuilder, Events, Options,
         ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const NotionService = require('./notion-service');
 const TournamentStore = require('./tournament-store');
@@ -20,6 +20,23 @@ class ClerkKentBot {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
       ],
+      // Memory: the bot only reacts to live mentions and never reads history,
+      // so keep almost nothing resident. Disable message/reaction/presence
+      // caches and hard-cap the rest, then sweep periodically.
+      makeCache: Options.cacheWithLimits({
+        ...Options.DefaultMakeCacheSettings,
+        MessageManager: 0,
+        ReactionManager: 0,
+        GuildMemberManager: { maxSize: 0, keepOverLimit: (m) => m.id === this.client.user.id },
+        UserManager: { maxSize: 0, keepOverLimit: (u) => u.id === this.client.user.id },
+        PresenceManager: 0,
+        ThreadManager: 0,
+      }),
+      sweepers: {
+        ...Options.DefaultSweeperSettings,
+        messages: { interval: 3600, lifetime: 1800 },
+        users: { interval: 3600, filter: () => (u) => u.id !== this.client.user.id },
+      },
     });
     this.notion = new NotionService();
     this.store = new TournamentStore();
@@ -31,6 +48,9 @@ class ClerkKentBot {
     this.llmService = new LlmService();
     this.reportBuilder = new ReportBuilder();
     this.cache = new TournamentCache();
+    // channelId → { roundTitle, judges: [{ name, philosophy, paradigmUrl }] }
+    // Populated by the last pairing report so `judge summary` can regenerate.
+    this._lastReportJudges = new Map();
     this.setupEventHandlers();
   }
 
@@ -117,6 +137,16 @@ class ClerkKentBot {
 
     if (lowerContent === 'stop pairings' || lowerContent === 'cancel') {
       await this.handleStopPairings(message);
+      return;
+    }
+
+    if (lowerContent === 'end') {
+      await this.handleEnd(message);
+      return;
+    }
+
+    if (/^judge\s+summ/i.test(lowerContent)) {
+      await this.handleJudgeSummary(message);
       return;
     }
 
@@ -711,6 +741,30 @@ class ClerkKentBot {
   }
 
   /**
+   * Handle: @Clerk Kent end
+   * Stops the session (like `stop pairings`) AND wipes all primed tournament
+   * caches + in-memory service caches to reclaim disk and heap between events.
+   */
+  async handleEnd(message) {
+    if (this._pendingSession) this._pendingSession = null;
+    if (this.emailMonitor) {
+      this.emailMonitor.stop();
+      this.emailMonitor = null;
+    }
+    this.store.clearActiveSession();
+
+    let removed = 0;
+    try { removed = this.cache.clearAll(); } catch (_) { /* ignore */ }
+    try { this.caselistService.clearCache(); } catch (_) { /* ignore */ }
+    this._lastReportJudges = new Map();
+
+    await message.reply(
+      `✅ Session ended. Stopped the pairings pipeline and cleared **${removed}** cache file(s) ` +
+      '(opponents + judges) plus in-memory data.'
+    );
+  }
+
+  /**
    * Handle: @Clerk Kent add entry <team_code> #channel
    * Manually adds a team entry to the active session's channel mappings.
    */
@@ -1040,7 +1094,7 @@ class ClerkKentBot {
     for (const judge of uniqueJudges) {
       initialEmbeds.push(this.reportBuilder.buildJudgeEmbed({
         name: judge.name,
-        paradigmSummary: '_⏳ Loading paradigm..._',
+        paradigmSummary: '_⏳ Fetching judge info..._',
       }));
     }
 
@@ -1050,22 +1104,23 @@ class ClerkKentBot {
       console.log(`📨 Sent initial report for ${ourTeamCode} (${roundTitle || 'Round ' + (roundNumber || '?')})`);
     }
 
-    // Phase 2: Fetch all judge paradigms in parallel, then edit the message
+    // Phase 2: Fetch judge paradigm links + Notion notes in parallel, then edit
+    // the message. AI paradigm summaries are intentionally NOT generated here
+    // (they're slow + pull in the LLM); run `@Clerk Kent judge summary` on demand.
     if (sentMessage && uniqueJudges.length > 0) {
+      const SUMMARY_HINT = '_Run `@Clerk Kent judge summary` for an AI paradigm summary._';
       const judgePromises = uniqueJudges.map(async (judge) => {
         const judgeName = judge.name;
-        let paradigmSummary = null;
         let paradigmUrl = null;
         let school = null;
+        let philosophy = null;
 
         try {
           const paradigm = await this._fetchParadigmCached(session, judgeName);
           if (paradigm) {
             paradigmUrl = paradigm.paradigmUrl;
             school = paradigm.school;
-            if (paradigm.philosophy) {
-              paradigmSummary = await this.llmService.summarizeParadigm(paradigm.philosophy);
-            }
+            philosophy = paradigm.philosophy || null;
           }
         } catch (err) {
           console.error(`[Pairing] Failed to fetch paradigm for ${judgeName}:`, err.message);
@@ -1087,10 +1142,18 @@ class ClerkKentBot {
           console.error(`[Pairing] Failed to fetch Notion data for ${judgeName}:`, err.message);
         }
 
-        return { name: judgeName, paradigmSummary, paradigmUrl, school, notionNotes, notionUrl };
+        return {
+          name: judgeName,
+          paradigmSummary: paradigmUrl ? SUMMARY_HINT : '_No paradigm found._',
+          paradigmUrl, school, philosophy, notionNotes, notionUrl,
+        };
       });
 
       const judgeEmbedData = await Promise.all(judgePromises);
+
+      // Remember this round's judges (name + philosophy) for this channel so a
+      // later `@Clerk Kent judge summary` can generate AI summaries on demand.
+      this._rememberReportJudges(channel.id, roundTitle || `Round ${roundNumber || '?'}`, judgeEmbedData);
 
       // Rebuild full embeds with completed judge data and edit the message
       const finalEmbeds = this.reportBuilder.buildFullReport(pairingEmbed, opponentData, judgeEmbedData);
@@ -1144,6 +1207,64 @@ class ClerkKentBot {
       console.log(`[Cache] Paradigm for "${judgeName}" not primed — fetching live`);
     }
     return this.paradigmService.fetchParadigmByName(judgeName);
+  }
+
+  /**
+   * Record the judges shown in the most recent pairing report for a channel,
+   * keeping only what's needed to build an AI summary later. Overwrites the
+   * previous entry (bounded memory — one report per channel).
+   */
+  _rememberReportJudges(channelId, roundTitle, judgeEmbedData) {
+    const judges = (judgeEmbedData || [])
+      .filter(j => j && j.name)
+      .map(j => ({ name: j.name, philosophy: j.philosophy || null, paradigmUrl: j.paradigmUrl || null }));
+    if (judges.length === 0) {
+      this._lastReportJudges.delete(channelId);
+      return;
+    }
+    this._lastReportJudges.set(channelId, { roundTitle, judges });
+  }
+
+  /**
+   * Handle: @Clerk Kent judge summary
+   * Generates an AI paradigm summary for each judge listed in the last pairing
+   * report posted in this channel.
+   */
+  async handleJudgeSummary(message) {
+    const entry = this._lastReportJudges.get(message.channel.id);
+    if (!entry || entry.judges.length === 0) {
+      await message.reply('_No recent pairing report in this channel to summarize. I only remember the most recent round per channel._');
+      return;
+    }
+
+    const withText = entry.judges.filter(j => j.philosophy && j.philosophy.trim());
+    if (withText.length === 0) {
+      await message.reply(`_No paradigm text is available for the judges in ${entry.roundTitle}._`);
+      return;
+    }
+
+    const progress = await message.reply(`⏳ Summarizing ${withText.length} paradigm(s) for **${entry.roundTitle}**…`);
+
+    const embeds = await Promise.all(withText.map(async (j) => {
+      let summary = '_Could not summarize paradigm._';
+      try {
+        summary = await this.llmService.summarizeParadigm(j.philosophy);
+      } catch (err) {
+        console.error(`[judge summary] Failed for ${j.name}:`, err.message);
+      }
+      return this.reportBuilder.buildJudgeEmbed({
+        name: j.name,
+        paradigmSummary: summary,
+        paradigmUrl: j.paradigmUrl,
+      });
+    }));
+
+    try {
+      await progress.edit({ content: `⚖️ AI paradigm summaries — **${entry.roundTitle}**`, embeds: embeds.slice(0, 10) });
+    } catch (err) {
+      console.error('[judge summary] Failed to edit reply:', err.message);
+      await message.channel.send({ embeds: embeds.slice(0, 10) });
+    }
   }
 
   /**

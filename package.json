@@ -4,7 +4,7 @@
   "description": "Automated debate tournament pairings report bot — monitors Tabroom emails and sends scouting reports to Discord",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node --max-old-space-size=384 index.js",
     "test": "jest --verbose"
   },
   "engines": {

@@ -13,6 +13,11 @@ class CaselistService {
     this._cache = {};
   }
 
+  /** Drop the in-memory schools/teams cache to reclaim heap between tournaments. */
+  clearCache() {
+    this._cache = {};
+  }
+
   async login() {
     try {
       const res = await fetch(`${BASE_URL}/login`, {
