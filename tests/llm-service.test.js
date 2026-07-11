@@ -99,6 +99,22 @@ describe('LlmService', () => {
       expect(result).toContain('1AC - PNT');
     });
 
+    test('extracts args from multi-line OpenCaselist format (1AC---X\\n1NC---...\\n2NR---...)', () => {
+      const rounds = [
+        { tournament: 'TOC', round: '1', report: '1AC---Vande Mataram\n1NC---T USFG, Cap K, Case\n2NR---T USFG' },
+        { tournament: 'UKSO', round: '5', report: '1AC---Theft of the Assembly\n1NC---T, Cap K, Case\n2NR---Cap K' },
+        { tournament: 'TOC', round: '4', report: '1AC---Vande Mataram\n1NC---T USFG, Case\n2NR---Cap K' },
+      ];
+      // Aff side: 1AC is the FIRST line — must still be extracted.
+      const aff = service.summarizeArguments(rounds, 'A');
+      expect(aff).toContain('1AC - Vande Mataram (2)');
+      expect(aff).toContain('1AC - Theft of the Assembly (1)');
+      // Neg side: 2NR is the LAST line.
+      const neg = service.summarizeArguments(rounds, 'N');
+      expect(neg).toContain('2NR - Cap K (2)');
+      expect(neg).toContain('2NR - T USFG (1)');
+    });
+
     test('extracts arguments with colon separator (2NR: T)', () => {
       const rounds = [
         { tournament: 'TOC', round: '1', report: '1ac: PNT; 2NR: china soft' },
