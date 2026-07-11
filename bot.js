@@ -1217,7 +1217,13 @@ class ClerkKentBot {
   _rememberReportJudges(channelId, roundTitle, judgeEmbedData) {
     const judges = (judgeEmbedData || [])
       .filter(j => j && j.name)
-      .map(j => ({ name: j.name, philosophy: j.philosophy || null, paradigmUrl: j.paradigmUrl || null }));
+      .map(j => ({
+        name: j.name,
+        philosophy: j.philosophy || null,
+        paradigmUrl: j.paradigmUrl || null,
+        notionNotes: j.notionNotes || null,
+        notionUrl: j.notionUrl || null,
+      }));
     if (judges.length === 0) {
       this._lastReportJudges.delete(channelId);
       return;
@@ -1228,7 +1234,7 @@ class ClerkKentBot {
   /**
    * Handle: @Clerk Kent judge summary
    * Generates an AI paradigm summary for each judge listed in the last pairing
-   * report posted in this channel.
+   * report posted in this channel, keeping the paradigm link + Notion report.
    */
   async handleJudgeSummary(message) {
     const entry = this._lastReportJudges.get(message.channel.id);
@@ -1238,24 +1244,30 @@ class ClerkKentBot {
     }
 
     const withText = entry.judges.filter(j => j.philosophy && j.philosophy.trim());
-    if (withText.length === 0) {
-      await message.reply(`_No paradigm text is available for the judges in ${entry.roundTitle}._`);
-      return;
-    }
+    const progress = await message.reply(
+      withText.length > 0
+        ? `⏳ Summarizing ${withText.length} paradigm(s) for **${entry.roundTitle}**…`
+        : `⏳ Building judge cards for **${entry.roundTitle}**…`
+    );
 
-    const progress = await message.reply(`⏳ Summarizing ${withText.length} paradigm(s) for **${entry.roundTitle}**…`);
-
-    const embeds = await Promise.all(withText.map(async (j) => {
-      let summary = '_Could not summarize paradigm._';
-      try {
-        summary = await this.llmService.summarizeParadigm(j.philosophy);
-      } catch (err) {
-        console.error(`[judge summary] Failed for ${j.name}:`, err.message);
+    const embeds = await Promise.all(entry.judges.map(async (j) => {
+      let summary;
+      if (j.philosophy && j.philosophy.trim()) {
+        summary = '_Could not summarize paradigm._';
+        try {
+          summary = await this.llmService.summarizeParadigm(j.philosophy);
+        } catch (err) {
+          console.error(`[judge summary] Failed for ${j.name}:`, err.message);
+        }
+      } else {
+        summary = '_No paradigm text available._';
       }
       return this.reportBuilder.buildJudgeEmbed({
         name: j.name,
         paradigmSummary: summary,
         paradigmUrl: j.paradigmUrl,
+        notionNotes: j.notionNotes,
+        notionUrl: j.notionUrl,
       });
     }));
 

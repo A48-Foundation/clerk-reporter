@@ -100,6 +100,14 @@ class ReportBuilder {
       },
     ];
 
+    if (notionUrl) {
+      fields.push({
+        name: 'Notion',
+        value: `[Judge Report](${notionUrl})`,
+        inline: true,
+      });
+    }
+
     if (notionNotes) {
       fields.push({
         name: '**Comments**',
