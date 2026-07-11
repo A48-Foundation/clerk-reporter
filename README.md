@@ -67,13 +67,13 @@ Before or during a tournament, you can **prime a cache** so live reports read fr
 @Clerk Kent cache opponents <tabroom_entries_url>
 ```
 
-Scrapes **every entry** in the event and pre-fetches each team's OpenCaselist Aff/Neg data (any team could become an opponent once pairings drop).
+Scrapes **every entry** in the event and pre-fetches each team's OpenCaselist Aff/Neg data (any team could become an opponent once pairings drop). For each team the cache stores the full **round history** cross-referenced from the OpenCaselist wiki, including the **document download URLs** for each round report — everything a live report would otherwise scrape.
 
 ```
 @Clerk Kent cache paradigms <tabroom_judges_url>
 ```
 
-Scrapes the tournament's judges-list page and pre-fetches every judge's Tabroom paradigm.
+Scrapes the tournament's judges-list page and, for every judge, pre-fetches their **name (first/last), Tabroom paradigm, and cross-tournament judging history** (recent decisions with matchup and vote).
 
 **Example:**
 

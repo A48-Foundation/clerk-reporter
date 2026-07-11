@@ -1174,22 +1174,140 @@ class ClerkKentBot {
    * Scrape a Tabroom judges-list page (authenticated layout) and return
    * [{ firstName, lastName, institution }].
    */
+  /**
+   * Add an explicit `downloadUrl` to every round that has an open-source doc,
+   * so the cached data is self-contained (no need to re-derive at report time).
+   */
+  _enrichRoundsWithDownloadUrls(result) {
+    if (!result || !Array.isArray(result.rounds)) return result;
+    for (const round of result.rounds) {
+      if (round && round.opensource) {
+        round.downloadUrl = this.caselistService.getDownloadUrl(round.opensource);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Scrape a Tabroom judges-list page and return one entry per judge:
+   *   { firstName, lastName, institution, judgePersonId, judgeId, recordUrl }
+   *
+   * Columns are mapped from the header row because layouts vary (some pages
+   * include a "Middle" column, shifting Last/Institution to the right).
+   */
   async _scrapeJudgesList(url) {
     const cheerio = require('cheerio');
     this.paradigmService.loggedIn = false;
     const html = await this.paradigmService.fetchPage(url);
     const $ = cheerio.load(html);
+
+    const headers = [];
+    $('#judgelist tr').first().find('th').each((i, el) => {
+      headers[i] = $(el).text().trim().toLowerCase();
+    });
+    const colOf = (label, fallback) => {
+      const idx = headers.indexOf(label);
+      return idx >= 0 ? idx : fallback;
+    };
+    const firstCol = colOf('first', 1);
+    const lastCol = colOf('last', 3);
+    const instCol = colOf('institution', 4);
+
     const judges = [];
-    // Authenticated view columns: Paradigm(0), First(1), Last(2), Institution(3)
+    const seen = new Set();
     $('#judgelist tr').each((_, row) => {
       const cells = $(row).find('td');
-      if (cells.length < 4) return;
-      const firstName = $(cells[1]).text().trim();
-      const lastName = $(cells[2]).text().trim();
-      const institution = $(cells[3]).attr('data-text') || $(cells[3]).text().trim();
-      if (firstName && lastName) judges.push({ firstName, lastName, institution });
+      if (cells.length === 0) return; // header row (th only)
+
+      const firstName = cells[firstCol] ? $(cells[firstCol]).text().trim() : '';
+      const lastName = cells[lastCol] ? $(cells[lastCol]).text().trim() : '';
+      if (!firstName || !lastName) return;
+
+      const instCell = cells[instCol];
+      const institution = instCell
+        ? ($(instCell).attr('data-text') || $(instCell).text().trim())
+        : '';
+
+      const paradigmHref = $(row).find('a[href*="judge_person_id"]').first().attr('href') || '';
+      const pidMatch = paradigmHref.match(/judge_person_id=(\d+)/);
+
+      const recordHref = $(row).find('a[href*="postings/judge.mhtml"]').first().attr('href') || '';
+      const recordUrl = recordHref
+        ? (recordHref.startsWith('http')
+            ? recordHref
+            : `https://www.tabroom.com${recordHref.startsWith('/') ? '' : '/'}${recordHref}`).replace(/&amp;/g, '&')
+        : null;
+      const jidMatch = recordHref.match(/judge_id=(\d+)/);
+
+      const key = `${firstName} ${lastName}`.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      judges.push({
+        firstName,
+        lastName,
+        institution,
+        judgePersonId: pidMatch ? pidMatch[1] : null,
+        judgeId: jidMatch ? jidMatch[1] : null,
+        recordUrl,
+      });
     });
     return judges;
+  }
+
+  /**
+   * Fetch a judge's cross-tournament judging history from their Tabroom record
+   * page. Returns an array of { tournament, date, event, round, aff, neg, vote,
+   * result }, most-recent first, capped at `limit`.
+   */
+  async _fetchJudgeHistory(recordUrl, limit = 25) {
+    if (!recordUrl) return [];
+    const cheerio = require('cheerio');
+    let html;
+    try {
+      html = await this.paradigmService.fetchPage(recordUrl);
+    } catch (err) {
+      console.warn('[Cache] Judge history fetch failed:', err.message);
+      return [];
+    }
+    const $ = cheerio.load(html);
+
+    // The cross-tournament record table is the one whose header includes "Vote".
+    let target = null;
+    $('table').each((_, t) => {
+      if (target) return;
+      const hdr = $(t).find('tr').first().find('th')
+        .map((i, e) => $(e).text().trim().toLowerCase()).get();
+      if (hdr.includes('vote')) target = { el: t, hdr };
+    });
+    if (!target) return [];
+
+    const idx = (label) => target.hdr.indexOf(label);
+    const iTourn = idx('tournament'), iDate = idx('date'), iEv = idx('ev'),
+          iRd = idx('rd'), iAff = idx('aff'), iNeg = idx('neg'),
+          iVote = idx('vote'), iResult = idx('result');
+
+    const history = [];
+    $(target.el).find('tr').each((_, r) => {
+      const cells = $(r).find('td');
+      if (cells.length === 0) return; // header
+      const cell = (i) => (i >= 0 && cells[i]) ? $(cells[i]).text().replace(/\s+/g, ' ').trim() : '';
+      const tournament = cell(iTourn);
+      if (!tournament) return;
+      const rawDate = cell(iDate);
+      const dateMatch = rawDate.match(/\d{4}-\d{2}-\d{2}/);
+      history.push({
+        tournament,
+        date: dateMatch ? dateMatch[0] : rawDate,
+        event: cell(iEv),
+        round: cell(iRd),
+        aff: cell(iAff),
+        neg: cell(iNeg),
+        vote: cell(iVote),
+        result: cell(iResult),
+      });
+    });
+    return history.slice(0, limit);
   }
 
   /**
@@ -1256,6 +1374,8 @@ class ClerkKentBot {
           this.caselistService.lookupOpponent(entry.code, 'A', entry.entry, caselistSlug),
           this.caselistService.lookupOpponent(entry.code, 'N', entry.entry, caselistSlug),
         ]);
+        this._enrichRoundsWithDownloadUrls(aff);
+        this._enrichRoundsWithDownloadUrls(neg);
         teams[entry.code.toLowerCase()] = { A: aff || null, N: neg || null };
         if ((aff && aff.rounds && aff.rounds.length) || (neg && neg.rounds && neg.rounds.length)) {
           withData++;
@@ -1325,20 +1445,41 @@ class ClerkKentBot {
 
       const judges = {};
       let withParadigm = 0;
+      let withHistory = 0;
       await this._mapWithConcurrency(judgeList, 3, async (j) => {
         const fullName = `${j.firstName} ${j.lastName}`;
+
         let paradigm = null;
         try {
-          paradigm = await this.paradigmService.fetchParadigmByName(fullName);
+          paradigm = j.judgePersonId
+            ? await this.paradigmService.fetchParadigm(j.judgePersonId)
+            : await this.paradigmService.fetchParadigmByName(fullName);
         } catch (err) {
-          console.warn(`[handleCacheParadigms] Failed for ${fullName}:`, err.message);
+          console.warn(`[handleCacheParadigms] Paradigm failed for ${fullName}:`, err.message);
         }
-        judges[TournamentCache.normalizeName(fullName)] = paradigm || null;
+
+        const history = await this._fetchJudgeHistory(j.recordUrl);
+
+        judges[TournamentCache.normalizeName(fullName)] = {
+          name: fullName,
+          firstName: j.firstName,
+          lastName: j.lastName,
+          school: (paradigm && paradigm.school) || j.institution || null,
+          philosophy: (paradigm && paradigm.philosophy) || null,
+          paradigmUrl: (paradigm && paradigm.paradigmUrl) ||
+            (j.judgePersonId ? `https://www.tabroom.com/index/paradigm.mhtml?judge_person_id=${j.judgePersonId}` : null),
+          judgePersonId: j.judgePersonId,
+          judgeId: j.judgeId,
+          historyUrl: j.recordUrl,
+          history,
+        };
+
         if (paradigm && paradigm.philosophy) withParadigm++;
+        if (history.length) withHistory++;
       }, async (done, total) => {
         if (done === total || done % 10 === 0) {
           try {
-            await progressMsg.edit(`⏳ Caching paradigms — ${done}/${total} judges…`);
+            await progressMsg.edit(`⏳ Caching judges — ${done}/${total} (paradigm + history)…`);
           } catch (_) { /* ignore edit races */ }
         }
       });
@@ -1346,8 +1487,8 @@ class ClerkKentBot {
       this.cache.saveParadigms(tournId, judges);
 
       await progressMsg.edit(
-        `✅ Cached paradigms (\`tourn_id=${tournId}\`).\n` +
-        `📦 ${judgeList.length} judges stored — ${withParadigm} with a paradigm.\n` +
+        `✅ Cached judges (\`tourn_id=${tournId}\`).\n` +
+        `📦 ${judgeList.length} judges stored — ${withParadigm} with a paradigm, ${withHistory} with judging history.\n` +
         'Live reports for this tournament will now read from this cache.'
       );
     } catch (err) {
