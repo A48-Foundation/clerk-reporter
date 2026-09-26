@@ -16,6 +16,12 @@ class EmailMonitor extends EventEmitter {
     this.email = options.email || process.env.IMAP_EMAIL;
     this.password = options.password || process.env.IMAP_PASSWORD;
     this.maxReconnectDelay = options.maxReconnectDelay || 300000;
+    this.searchCriteria = options.searchCriteria || [
+      'UNSEEN',
+      ['OR', ['FROM', '@www.tabroom.com'], ['SUBJECT', '[TAB]']],
+    ];
+    this.markSeen = options.markSeen !== false;
+    this.fastInterval = options.pollInterval || FAST_INTERVAL;
     this._pollTimer = null;
     this._resumeTimer = null;
     this._watchdogTimer = null;
@@ -23,14 +29,14 @@ class EmailMonitor extends EventEmitter {
     this._inboxOpen = false;
     this._stopped = false;
     this._reconnectAttempts = 0;
-    this._currentInterval = FAST_INTERVAL;
+    this._currentInterval = this.fastInterval;
     this._lastSuccessfulPoll = null;
   }
 
   start() {
     this._stopped = false;
     this._reconnectAttempts = 0;
-    this._currentInterval = FAST_INTERVAL;
+    this._currentInterval = this.fastInterval;
     this._connect();
     this._startWatchdog();
   }
@@ -47,8 +53,8 @@ class EmailMonitor extends EventEmitter {
     if (this._resumeTimer) clearTimeout(this._resumeTimer);
 
     this._resumeTimer = setTimeout(() => {
-      this._currentInterval = FAST_INTERVAL;
-      console.log(`[EmailMonitor] ⚡ Resuming fast polling (${FAST_INTERVAL / 1000}s)`);
+      this._currentInterval = this.fastInterval;
+      console.log(`[EmailMonitor] ⚡ Resuming fast polling (${this.fastInterval / 1000}s)`);
       this._resumeTimer = null;
     }, RESUME_FAST_AT);
   }
@@ -249,7 +255,7 @@ class EmailMonitor extends EventEmitter {
         const result = EmailParser.parse(emailData);
         console.log(`[EmailMonitor] Parsed result:`, JSON.stringify(result, null, 2).slice(0, 500));
         this.emit('pairing', { uid, parsed: result, raw: emailData });
-        await this._markSeen(uid);
+        if (this.markSeen) await this._markSeen(uid);
       } catch (err) {
         console.error(`[EmailMonitor] Error processing UID ${uid}:`, err.message);
         this.emit('error', err);
@@ -260,8 +266,7 @@ class EmailMonitor extends EventEmitter {
   _search() {
     return new Promise((resolve, reject) => {
       if (!this._imap) return reject(new Error('No IMAP connection'));
-      const criteria = ['UNSEEN', ['OR', ['FROM', '@www.tabroom.com'], ['SUBJECT', '[TAB]']]];
-      this._imap.search(criteria, (err, results) => {
+      this._imap.search(this.searchCriteria, (err, results) => {
         if (err) return reject(err);
         resolve(results || []);
       });

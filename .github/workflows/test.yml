@@ -25,3 +25,30 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  live-pairing-smoke:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Send emails and verify Discord reports
+        run: npm run test:live
+        env:
+          E2E_GMAIL_EMAIL: ${{ secrets.E2E_GMAIL_EMAIL }}
+          E2E_GMAIL_APP_PASSWORD: ${{ secrets.E2E_GMAIL_APP_PASSWORD }}
+          E2E_DISCORD_TOKEN: ${{ secrets.E2E_DISCORD_TOKEN }}
+          E2E_DISCORD_CHANNEL_ID: '1492506305842249728'

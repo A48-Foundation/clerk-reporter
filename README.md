@@ -409,7 +409,7 @@ npm start
 npm test
 ```
 
-The test suite includes **213 tests** across 9 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **215 tests** across 10 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
@@ -422,6 +422,21 @@ The test suite includes **213 tests** across 9 files, and runs automatically in 
 | `bot-routing.test.js` | 9 | `_resolveChannelId` tolerant channel resolution (exact / normalized / suffix) |
 | `pairing-flow.test.js` | 8 | **End-to-end**: parse → route → send, dedup-after-send, retriable failures, monitor restore |
 | `tournament-cache.test.js` | 8 | Name normalization, opponent/paradigm priming, miss vs cached-empty semantics |
+| `email-monitor.test.js` | 2 | Production defaults and isolated live-test IMAP search behavior |
+
+#### Live email-to-Discord smoke test
+
+Every push to `master` also runs `npm run test:live` after the ordinary tests pass. It sends four real emails through Gmail (short codes, full-name codes, multi-team assignments, and FLIP), retrieves only those messages through IMAP, runs the real pairing pipeline, posts five reports to Discord channel `1492506305842249728`, then fetches the messages back and verifies the round, room, opponent, and judge embeds.
+
+Add these GitHub Actions repository secrets before enabling the job:
+
+| Secret | Value |
+|--------|-------|
+| `E2E_GMAIL_EMAIL` | Clerk Kent Gmail address |
+| `E2E_GMAIL_APP_PASSWORD` | Gmail App Password used for SMTP and IMAP |
+| `E2E_DISCORD_TOKEN` | Clerk Kent Discord bot token |
+
+The workflow uses a unique Gmail plus-address per run and does not mark the test messages read, so it does not consume ordinary tournament emails. The live test does not require an active tournament session or persistent volume.
 
 ### Key Implementation Details
 
