@@ -1045,13 +1045,14 @@ class ClerkKentBot {
     const { ourTeamCode, opponentCode, opponentSide, side, room, judges,
             roundTitle, startTime, roundNumber, aff, neg } = pairing;
 
-    // Deduplicate: skip if we already sent a report for this team+round
+    // Deduplicate: skip if we already sent a report for this team+round.
+    // NOTE: we only mark as reported AFTER a successful send (below), so a
+    // failed routing/channel lookup doesn't permanently suppress retries.
     const dedupKey = `${ourTeamCode}::${roundTitle || ''}::${roundNumber || ''}`.toLowerCase();
     if (this.store.isPairingReported(dedupKey)) {
       console.log(`[Pairing] Skipping duplicate report for ${ourTeamCode} in ${roundTitle || 'Round ' + roundNumber}`);
       return;
     }
-    this.store.markPairingReported(dedupKey);
 
     // Find the channel for our team
     const channelId = this._resolveChannelId(session, ourTeamCode);
@@ -1179,6 +1180,8 @@ class ClerkKentBot {
     let sentMessage = null;
     if (initialEmbeds.length > 0) {
       sentMessage = await channel.send({ embeds: initialEmbeds.slice(0, 10) });
+      // Mark reported only now that the report has actually been delivered.
+      this.store.markPairingReported(dedupKey);
       console.log(`📨 Sent initial report for ${ourTeamCode} (${roundTitle || 'Round ' + (roundNumber || '?')})`);
     }
 
