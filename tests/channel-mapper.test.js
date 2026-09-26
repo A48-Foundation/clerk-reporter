@@ -49,6 +49,30 @@ describe('ChannelMapper', () => {
     });
   });
 
+  describe('candidateSuffixes', () => {
+    const mapper = new ChannelMapper(createMockClient());
+
+    test('short code returns the last token', () => {
+      expect(mapper.candidateSuffixes('Interlake WY')).toEqual(['WY']);
+    });
+
+    test('partnership full names derive last-name initials both orders', () => {
+      expect(mapper.candidateSuffixes('Interlake Julia Ye & Aaron Wang')).toEqual([
+        'WANG',
+        'YW',
+        'WY',
+      ]);
+    });
+
+    test('single-name entry returns empty', () => {
+      expect(mapper.candidateSuffixes('SingleWord')).toEqual([]);
+    });
+
+    test('handles null input', () => {
+      expect(mapper.candidateSuffixes(null)).toEqual([]);
+    });
+  });
+
   describe('findChannel', () => {
     test('finds channel matching suffix-tournaments pattern', async () => {
       const channels = [
@@ -91,6 +115,20 @@ describe('ChannelMapper', () => {
       expect(result).toEqual({
         'Interlake CG': { channelId: 'ch1', channelName: 'cg-tournaments', confidence: 'auto' },
         'Cuttlefish WS': { channelId: null, channelName: null, confidence: 'unmatched' },
+      });
+    });
+
+    test('maps a full-name partnership entry via derived initials', async () => {
+      const channels = [{ id: 'ch9', name: 'wy-tournaments' }];
+      const mapper = new ChannelMapper(createMockClient(channels));
+
+      const result = await mapper.autoMap(['Interlake Julia Ye & Aaron Wang']);
+      expect(result).toEqual({
+        'Interlake Julia Ye & Aaron Wang': {
+          channelId: 'ch9',
+          channelName: 'wy-tournaments',
+          confidence: 'auto',
+        },
       });
     });
 

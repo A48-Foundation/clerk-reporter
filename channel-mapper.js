@@ -17,6 +17,39 @@ class ChannelMapper {
   }
 
   /**
+   * Build the ordered list of channel-suffix candidates for a team code.
+   *
+   * Tabroom sometimes gives a short code ("Interlake WY") and sometimes the
+   * full debater names ("Interlake Julia Ye & Aaron Wang"). For the latter we
+   * derive the two debaters' last-name initials in both orders, since Tabroom's
+   * partner ordering isn't guaranteed to match the channel name (WY vs YW).
+   * Returns uppercase candidates with duplicates removed, order preserved.
+   */
+  candidateSuffixes(teamCode) {
+    if (!teamCode || typeof teamCode !== 'string') return [];
+    const candidates = [];
+    const parts = teamCode.trim().split(/\s+/);
+
+    // 1. Short-code style: the last space-separated token (e.g. "WY").
+    if (parts.length >= 2) candidates.push(parts[parts.length - 1]);
+
+    // 2. Partnership full names: "<School> First Last & First Last".
+    //    Use the last word on each side of the "&" as each debater's last name.
+    if (teamCode.includes('&')) {
+      const lastNames = teamCode
+        .split('&')
+        .map((side) => side.trim().split(/\s+/).pop())
+        .filter(Boolean);
+      if (lastNames.length === 2) {
+        const [a, b] = lastNames.map((n) => n[0].toUpperCase());
+        candidates.push(a + b, b + a);
+      }
+    }
+
+    return [...new Set(candidates.map((c) => c.toUpperCase()).filter(Boolean))];
+  }
+
+  /**
    * Search all guilds the bot is in for a channel named `{suffix}-tournaments`
    * (case-insensitive).
    */
@@ -42,12 +75,16 @@ class ChannelMapper {
     if (!Array.isArray(teamCodes)) return mapping;
 
     for (const code of teamCodes) {
-      const suffix = this.extractTeamSuffix(code);
-      if (!suffix) {
+      const candidates = this.candidateSuffixes(code);
+      if (candidates.length === 0) {
         mapping[code] = { channelId: null, channelName: null, confidence: 'unmatched' };
         continue;
       }
-      const channel = await this.findChannel(suffix);
+      let channel = null;
+      for (const suffix of candidates) {
+        channel = await this.findChannel(suffix);
+        if (channel) break;
+      }
       if (channel) {
         mapping[code] = {
           channelId: channel.id,
@@ -112,8 +149,8 @@ class ChannelMapper {
         const [, overrideSuffix, channelRef] = match;
         // Find the team code whose suffix matches the override key
         for (const team of Object.keys(confirmed)) {
-          const suffix = this.extractTeamSuffix(team);
-          if (suffix && suffix.toLowerCase() === overrideSuffix.toLowerCase()) {
+          const suffixes = this.candidateSuffixes(team);
+          if (suffixes.some((s) => s.toLowerCase() === overrideSuffix.toLowerCase())) {
             // Look up the referenced channel by name across all guilds
             for (const [, guild] of this.client.guilds.cache) {
               const found = guild.channels.cache.find(

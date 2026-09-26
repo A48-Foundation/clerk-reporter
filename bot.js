@@ -489,8 +489,8 @@ class ClerkKentBot {
       let matched = false;
 
       for (const team of Object.keys(this._pendingSession.mapping)) {
-        const teamSuffix = this.channelMapper.extractTeamSuffix(team);
-        if (teamSuffix && teamSuffix.toLowerCase() === suffix.toLowerCase()) {
+        const teamSuffixes = this.channelMapper.candidateSuffixes(team);
+        if (teamSuffixes.some(s => s.toLowerCase() === suffix.toLowerCase())) {
           // Search all guilds for the channel
           let found = null;
           for (const [, guild] of this.client.guilds.cache) {
