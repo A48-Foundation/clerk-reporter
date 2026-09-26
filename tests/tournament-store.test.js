@@ -2,6 +2,7 @@ jest.mock('fs', () => ({
   existsSync: jest.fn(),
   readFileSync: jest.fn(),
   writeFileSync: jest.fn(),
+  mkdirSync: jest.fn(),
 }));
 const fs = require('fs');
 

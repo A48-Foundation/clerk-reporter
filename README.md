@@ -343,6 +343,7 @@ FEEDBACK_DATABASE_ID=abc123-...
 | `OPENAI_API_KEY` | Optional | Enables LLM summarization; without it, uses keyword frequency analysis |
 | `SCHOOL_NAMES` | Optional | Comma-separated school names to detect in pairings (default: `Interlake,Cuttlefish`) |
 | `SEASON_YEAR` | Optional | 2-digit season year for caselist slugs, e.g. `26` → `hspolicy26`/`ndtceda26` (default: `26`). Overridden by `@Clerk Kent set season`. |
+| `DATA_DIR` | Recommended on hosts | Directory for the persisted session file (`tournaments.json`). Point at a **mounted volume** so the active session and running email monitor survive restarts/redeploys (default: app directory, which is ephemeral). |
 | `FEEDBACK_DATABASE_ID` | Optional | Notion feedback database (reserved for future features) |
 
 #### 3. Gmail App Password
@@ -400,7 +401,7 @@ npm start
 
 6. Deploy — the bot will start automatically and reconnect on restarts
 
-> **Note:** `tournaments.json` (session state) is ephemeral on Railway — it resets on each deploy. The bot auto-restores email monitoring from persisted sessions, but channel mappings will need to be re-confirmed after a fresh deploy.
+> **Note:** `tournaments.json` (session state) is ephemeral on Railway — without a volume it resets on each deploy, which **stops the email monitor** and drops channel mappings until you re-run setup. To keep the active session (and monitor) alive across restarts/redeploys, attach a **persistent volume** and set `DATA_DIR` to its mount path (e.g. `DATA_DIR=/data`). The bot auto-restores email monitoring from the persisted session on startup.
 
 ### Running Tests
 
@@ -408,19 +409,19 @@ npm start
 npm test
 ```
 
-The test suite includes **184 tests** across 7 files:
+The test suite includes **213 tests** across 9 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
-| `email-parser.test.js` | 63 | Subject/body parsing, pairing detection, LLM fallback, validation |
-| `channel-mapper.test.js` | 14 | Team suffix extraction, channel lookup, auto-mapping |
-| `report-builder.test.js` | 21 | Embed construction, doc link fields, truncation, embed cap |
-| `llm-service.test.js` | 13 | Frequency analysis, inline doc links, paradigm truncation, LLM fallback |
-| `caselist-service.test.js` | 31 | Team code parsing, school lookup, wiki URL construction, entry name matching |
+| `email-parser.test.js` | 67 | Subject/body parsing, pairing detection, LLM fallback, validation |
+| `caselist-service.test.js` | 39 | Team code parsing (short codes + full names), school lookup, wiki URL, entry name matching |
 | `tournament-store.test.js` | 33 | Load/save, team tracking, session management, email UID tracking, settings |
+| `channel-mapper.test.js` | 19 | Team suffix/candidate extraction, channel lookup, auto-mapping |
+| `llm-service.test.js` | 17 | Frequency analysis, inline doc links, paradigm truncation, LLM fallback |
+| `report-builder.test.js` | 13 | Embed construction, doc link fields, truncation, embed cap |
+| `bot-routing.test.js` | 9 | `_resolveChannelId` tolerant channel resolution (exact / normalized / suffix) |
+| `pairing-flow.test.js` | 8 | **End-to-end**: parse → route → send, dedup-after-send, retriable failures, monitor restore |
 | `tournament-cache.test.js` | 8 | Name normalization, opponent/paradigm priming, miss vs cached-empty semantics |
-
-Test fixtures live in `tests/fixtures/emails.js` — real email samples with pre-calculated expected outputs.
 
 ### Key Implementation Details
 

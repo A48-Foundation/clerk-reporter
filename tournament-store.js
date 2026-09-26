@@ -1,7 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA_FILE = path.join(__dirname, 'tournaments.json');
+// Persist to a durable location when DATA_DIR is set (e.g. a mounted volume on
+// the deploy host). Container filesystems are ephemeral, so without a volume the
+// active session — and thus the running email monitor — is lost on every
+// restart or redeploy. Falls back to the app directory for local dev.
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const DATA_FILE = process.env.DATA_FILE || path.join(DATA_DIR, 'tournaments.json');
 
 /**
  * Manages tournament tracking configurations.
@@ -43,6 +48,8 @@ class TournamentStore {
 
   save() {
     const data = { tournaments: this.tournaments, activeSession: this.activeSession, settings: this.settings };
+    const dir = path.dirname(DATA_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   }
 
