@@ -308,6 +308,106 @@ describe('CaselistService', () => {
       const result = await service.lookupOpponent('Coppell', 'A');
       expect(result).toBeNull();
     });
+
+    test('full-name partnership code parses school and derives entry names', async () => {
+      const service = new CaselistService();
+
+      mockLogin();
+      // findSchool
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([{ name: 'Rosemount', displayName: 'Rosemount' }]),
+      });
+      // _getTeams — caselist team keyed on last names Govindarajan/Patel
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve([
+            {
+              name: 'GoPa',
+              debater1_last: 'Govindarajan',
+              debater2_last: 'Patel',
+              display_name: 'Govindarajan & Patel',
+            },
+          ]),
+      });
+      // getTeamRounds
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([{ tournament: 'Mid America', round: 'R2', side: 'N', report: '2NR politics' }]),
+      });
+
+      const result = await service.lookupOpponent('Rosemount Keshav Govindarajan & Aahan Patel', 'N');
+      expect(result).not.toBeNull();
+      expect(result.schoolName).toBe('Rosemount');
+      expect(result.teamCode).toBe('GP');
+      expect(result.teamSlug).toBe('GoPa');
+      expect(result.rounds).toHaveLength(1);
+    });
+
+    test('full-name partnership matches even when partner order differs', async () => {
+      const service = new CaselistService();
+
+      mockLogin();
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([{ name: 'Interlake', displayName: 'Interlake' }]),
+      });
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve([
+            { name: 'WaYe', debater1_last: 'Wang', debater2_last: 'Ye', display_name: 'Wang & Ye' },
+          ]),
+      });
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([]),
+      });
+
+      const result = await service.lookupOpponent('Interlake Julia Ye & Aaron Wang', 'A');
+      expect(result).not.toBeNull();
+      expect(result.schoolName).toBe('Interlake');
+      expect(result.teamSlug).toBe('WaYe');
+    });
+  });
+
+  describe('_parseTeamCode', () => {
+    const service = new CaselistService();
+
+    test('short code with single-word school', () => {
+      expect(service._parseTeamCode('Coppell PK')).toEqual({
+        schoolName: 'Coppell', entryNames: null, teamSuffix: 'PK',
+      });
+    });
+
+    test('short code with multi-word school', () => {
+      expect(service._parseTeamCode('Arizona Chandler Independent LS')).toEqual({
+        schoolName: 'Arizona Chandler Independent', entryNames: null, teamSuffix: 'LS',
+      });
+    });
+
+    test('full-name partnership derives school, last names, and initials', () => {
+      expect(service._parseTeamCode('Rosemount Keshav Govindarajan & Aahan Patel')).toEqual({
+        schoolName: 'Rosemount', entryNames: 'Govindarajan & Patel', teamSuffix: 'GP',
+      });
+    });
+
+    test('full-name partnership with multi-word school', () => {
+      expect(service._parseTeamCode('North Hollywood John Doe & Jane Smith')).toEqual({
+        schoolName: 'North Hollywood', entryNames: 'Doe & Smith', teamSuffix: 'DS',
+      });
+    });
+
+    test('full-name maverick (no "&")', () => {
+      expect(service._parseTeamCode('Rosemount John Doe')).toEqual({
+        schoolName: 'Rosemount', entryNames: 'Doe', teamSuffix: 'D',
+      });
+    });
+
+    test('single-word code yields empty school', () => {
+      expect(service._parseTeamCode('Coppell').schoolName).toBe('');
+    });
   });
 
   describe('getWikiUrl', () => {

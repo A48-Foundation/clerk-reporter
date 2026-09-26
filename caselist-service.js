@@ -185,13 +185,70 @@ class CaselistService {
    * Parse last names from a Tabroom entry field.
    * "Levine & Zhang" → ["levine", "zhang"]
    * "Chen & Olteanu" → ["chen", "olteanu"]
+   * "Keshav Govindarajan & Aahan Patel" → ["govindarajan", "patel"]
+   *
+   * When a side contains multiple words (full "First Last" names), the last
+   * token is taken as the last name.
    */
   _parseEntryNames(entryField) {
     if (!entryField) return [];
     return entryField
       .split(/\s*[&,]\s*|\s+and\s+/i)
       .map(n => n.trim().toLowerCase())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(side => side.split(/\s+/).pop());
+  }
+
+  /**
+   * Split a Tabroom team code into { schoolName, entryNames, teamSuffix },
+   * tolerant of the different formats tournaments use:
+   *
+   *   Short code:            "Coppell PK"                        → school "Coppell",  suffix "PK"
+   *   Multi-word school:     "Arizona Chandler Independent LS"   → school "Arizona Chandler Independent", suffix "LS"
+   *   Full-name partnership: "Rosemount Keshav Govindarajan & Aahan Patel"
+   *                          → school "Rosemount", entryNames "Govindarajan & Patel", suffix "GP"
+   *   Full-name maverick:    "Rosemount John Doe"                → school "Rosemount", entryNames "Doe", suffix "D"
+   *
+   * `entryNames` is null for short codes (the caller supplies Tabroom entry
+   * names separately); for full-name formats it is derived from the code so the
+   * caselist lookup can match on debater last names.
+   */
+  _parseTeamCode(teamCode) {
+    const trimmed = (teamCode || '').trim();
+    if (!trimmed) return { schoolName: '', entryNames: null, teamSuffix: '' };
+    const tokens = trimmed.split(/\s+/);
+    const last = tokens[tokens.length - 1];
+    // A short code is a brief all-caps token (e.g. "PK", "LZ", "AW").
+    const looksShortCode = /^[A-Za-z]{1,3}$/.test(last) && last === last.toUpperCase();
+
+    // Full-name partnership: "<School> <First> <Last> & <First> <Last>"
+    if (trimmed.includes('&')) {
+      const [left, right] = trimmed.split('&');
+      const leftTokens = left.trim().split(/\s+/).filter(Boolean);
+      const rightTokens = right.trim().split(/\s+/).filter(Boolean);
+      const last1 = leftTokens[leftTokens.length - 1] || '';
+      const last2 = rightTokens[rightTokens.length - 1] || '';
+      // Everything before the first debater's "First Last" is the school.
+      const school = leftTokens.slice(0, -2).join(' ') || leftTokens.slice(0, -1).join(' ');
+      const suffix = ((last1[0] || '') + (last2[0] || '')).toUpperCase();
+      return {
+        schoolName: school,
+        entryNames: (last1 && last2) ? `${last1} & ${last2}` : (last1 || last2 || null),
+        teamSuffix: suffix,
+      };
+    }
+
+    // Short code or single-token: "<School...> <SUFFIX>"
+    if (looksShortCode || tokens.length <= 2) {
+      const rest = tokens.slice();
+      const teamSuffix = rest.pop();
+      return { schoolName: rest.join(' '), entryNames: null, teamSuffix };
+    }
+
+    // Full-name maverick (no "&", 3+ tokens): "<School...> <First> <Last>"
+    const lastName = tokens[tokens.length - 1];
+    const school = tokens.slice(0, -2).join(' ') || tokens.slice(0, -1).join(' ');
+    return { schoolName: school, entryNames: lastName, teamSuffix: (lastName[0] || '').toUpperCase() };
   }
 
   /**
@@ -317,13 +374,14 @@ class CaselistService {
    */
   async lookupOpponent(teamCode, side, entryNames, caselistSlug = DEFAULT_CASELIST) {
     try {
-      const parts = teamCode.trim().split(/\s+/);
-      if (parts.length < 2) {
+      const { schoolName, entryNames: derivedEntryNames, teamSuffix } = this._parseTeamCode(teamCode);
+      if (!schoolName || !teamSuffix) {
         console.warn('[CaselistService] Team code must contain school name + team suffix');
         return null;
       }
-      const teamSuffix = parts.pop();
-      const schoolName = parts.join(' ');
+      // Prefer explicit Tabroom entry names; fall back to names derived from a
+      // full-name team code (e.g. "Rosemount Keshav Govindarajan & Aahan Patel").
+      const effectiveEntryNames = entryNames || derivedEntryNames;
 
       if (!this.cookie) await this.login();
 
@@ -333,9 +391,9 @@ class CaselistService {
         return null;
       }
 
-      const team = await this.findTeamByEntry(caselistSlug, schoolSlug, entryNames, teamSuffix);
+      const team = await this.findTeamByEntry(caselistSlug, schoolSlug, effectiveEntryNames, teamSuffix);
       if (!team) {
-        console.warn(`[CaselistService] Could not find team "${teamSuffix}" (entry: "${entryNames}") under "${schoolSlug}"`);
+        console.warn(`[CaselistService] Could not find team "${teamSuffix}" (entry: "${effectiveEntryNames}") under "${schoolSlug}"`);
         return null;
       }
 
