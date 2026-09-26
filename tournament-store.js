@@ -68,11 +68,45 @@ class TournamentStore {
     this.save();
   }
 
+  /**
+   * The debate season is expressed as a 2-digit year (e.g. "26" → 2025-26
+   * season → OpenCaselist slugs `hspolicy26` / `ndtceda26`). This is the single
+   * knob to turn over each season: change it once and every caselist slug that
+   * is derived from a tier's `caselistBase` updates automatically.
+   */
+  normalizeSeasonYear(year) {
+    const digits = String(year == null ? '' : year).replace(/\D/g, '');
+    if (digits.length >= 2) return digits.slice(-2);
+    return digits.padStart(2, '0');
+  }
+
+  getSeasonYear() {
+    return this.normalizeSeasonYear(
+      this.settings.seasonYear || process.env.SEASON_YEAR || '26'
+    );
+  }
+
+  setSeasonYear(year) {
+    this.settings.seasonYear = this.normalizeSeasonYear(year);
+    // Season year is now the single source of truth for slugs; drop any stale
+    // explicit override so it doesn't shadow the newly-set season.
+    delete this.settings.caselistSlug;
+    this.save();
+    return this.settings.seasonYear;
+  }
+
   getSchoolTiers() {
-    return this.settings.schoolTiers || [
-      { schools: ['Interlake', 'Cuttlefish', 'Cuttlefish Independent'], caselist: 'hspolicy25', label: 'HS Policy' },
-      { schools: ['Dartmouth'], caselist: 'ndtceda25', label: 'College NDT/CEDA' },
+    const year = this.getSeasonYear();
+    const tiers = this.settings.schoolTiers || [
+      { schools: ['Interlake', 'Cuttlefish', 'Cuttlefish Independent'], caselistBase: 'hspolicy', label: 'HS Policy' },
+      { schools: ['Dartmouth'], caselistBase: 'ndtceda', label: 'College NDT/CEDA' },
     ];
+    // Resolve each tier's caselist slug from its base + the current season year.
+    // Legacy tiers that stored a full `caselist` slug (no base) are kept as-is.
+    return tiers.map((t) => ({
+      ...t,
+      caselist: t.caselistBase ? `${t.caselistBase}${year}` : t.caselist,
+    }));
   }
 
   setSchoolTiers(tiers) {
@@ -81,7 +115,11 @@ class TournamentStore {
   }
 
   getCaselistSlug() {
-    return this.settings.caselistSlug || process.env.CASELIST_SLUG || 'hspolicy25';
+    if (this.settings.caselistSlug) return this.settings.caselistSlug;
+    if (process.env.CASELIST_SLUG) return process.env.CASELIST_SLUG;
+    // Default to the primary (first) tier's slug for the current season.
+    const first = this.getSchoolTiers()[0];
+    return first ? first.caselist : `hspolicy${this.getSeasonYear()}`;
   }
 
   setCaselistSlug(slug) {

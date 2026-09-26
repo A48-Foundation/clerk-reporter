@@ -272,14 +272,31 @@ class ClerkKentBot {
       return;
     }
 
-    // Set caselist: "set caselist ndtceda25" or "set caselist hspolicy25"
+    // Set season year: "set season 26" — the single knob that rolls every
+    // caselist slug over to the new season (hspolicy26 / ndtceda26, etc.)
+    if (/^set\s+season\s+/i.test(lowerContent)) {
+      const raw = content.replace(/^set\s+season\s+/i, '').trim();
+      if (raw) {
+        const year = this.store.setSeasonYear(raw);
+        await message.reply(
+          `✅ Season set to **20${year}** — caselist is now **${this.store.getCaselistSlug()}**.`
+        );
+      } else {
+        await message.reply(
+          `ℹ️ Current season: **20${this.store.getSeasonYear()}** (caselist: **${this.store.getCaselistSlug()}**)\nUsage: \`@Clerk Kent set season 26\``
+        );
+      }
+      return;
+    }
+
+    // Set caselist: "set caselist ndtceda26" or "set caselist hspolicy26"
     if (/^set\s+caselist\s+/i.test(lowerContent)) {
       const slug = content.replace(/^set\s+caselist\s+/i, '').trim();
       if (slug) {
         this.store.setCaselistSlug(slug);
         await message.reply(`✅ Caselist set to **${slug}**`);
       } else {
-        await message.reply(`ℹ️ Current caselist: **${this.store.getCaselistSlug()}**\nUsage: \`@Clerk Kent set caselist ndtceda25\``);
+        await message.reply(`ℹ️ Current caselist: **${this.store.getCaselistSlug()}**\nUsage: \`@Clerk Kent set caselist ndtceda26\``);
       }
       return;
     }
@@ -435,7 +452,7 @@ class ClerkKentBot {
       .setTitle(`📋 ${session.tournamentName} — Channel Mapping`)
       .setDescription(
         lines.join('\n') + '\n\n' +
-        `📑 Detected caselist: **${session.caselistLabel || 'HS Policy'}** (\`${session.caselistSlug || 'hspolicy25'}\`)\n\n` +
+        `📑 Detected caselist: **${session.caselistLabel || 'HS Policy'}** (\`${session.caselistSlug || this.store.getCaselistSlug()}\`)\n\n` +
         'Type overrides like `OC=#some-channel` or click **Confirm & Start** when ready.'
       )
       .setColor(0x5865f2);
@@ -526,7 +543,7 @@ class ClerkKentBot {
       const session = this._pendingSession;
       this._pendingSession = null;
 
-      const caselistSlug = session.caselistSlug || 'hspolicy25';
+      const caselistSlug = session.caselistSlug || this.store.getCaselistSlug();
       const caselistLabel = session.caselistLabel || 'HS Policy';
 
       // Build channelMappings as { teamCode: channelId }
@@ -2267,7 +2284,8 @@ class ClerkKentBot {
         '`@Clerk Kent cache paradigms <judges_url>` — Pre-fetch judge paradigms\n\n' +
         '**Settings:**\n' +
         '`@Clerk Kent set schools School1, School2` — Set tracked school names\n' +
-        '`@Clerk Kent set caselist ndtceda25` — Set caselist (hspolicy25 or ndtceda25)\n' +
+        '`@Clerk Kent set season 26` — Roll all caselist slugs to the 20XX season\n' +
+        '`@Clerk Kent set caselist ndtceda26` — Override the caselist slug directly\n' +
         '`@Clerk Kent our aff is [name]` — Set your aff for neg scouting\n\n' +
         '**Tournament Tracking:**\n' +
         '`@Clerk Kent track <tabroom_url> <team_code>` — Register a team to track\n' +

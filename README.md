@@ -2,7 +2,7 @@
 
 Automated debate tournament scouting reports, delivered straight to Discord.
 
-Clerk Reporter monitors a Gmail inbox for [Tabroom](https://www.tabroom.com) pairing notification emails. When a new round is paired, it automatically identifies your team, researches the opponent on [OpenCaselist](https://opencaselist.com/hspolicy25), fetches the judge's paradigm from Tabroom, summarizes both with an LLM, and posts a rich scouting report to the team's Discord channel.
+Clerk Reporter monitors a Gmail inbox for [Tabroom](https://www.tabroom.com) pairing notification emails. When a new round is paired, it automatically identifies your team, researches the opponent on [OpenCaselist](https://opencaselist.com/hspolicy26), fetches the judge's paradigm from Tabroom, summarizes both with an LLM, and posts a rich scouting report to the team's Discord channel.
 
 ---
 
@@ -107,6 +107,14 @@ Caches are keyed by Tabroom `tourn_id` and stored in `cache/` (git-ignored, ephe
 ```
 
 Sets the name of your team's current 1AC (e.g. `PNT`, `Science Diplomacy`). This is used when scouting opponents on **Neg** — the bot searches their caselist for rounds where they went neg against your aff. Defaults to `PNT`. Persists between sessions.
+
+#### Set the Season
+
+```
+@Clerk Kent set season 26
+```
+
+Sets the debate season as a 2-digit year — the single knob to turn over when a new season starts. It updates every OpenCaselist slug at once: `hspolicy26` for HS Policy and `ndtceda26` for College NDT/CEDA (derived from each tier's base name + the season year). Run `@Clerk Kent set season` with no year to see the current season. You can also set `SEASON_YEAR=26` as an environment variable, or override a single slug directly with `@Clerk Kent set caselist <slug>`. Persists between sessions.
 
 #### Email Processing
 
@@ -319,6 +327,7 @@ IMAP_PASSWORD=abcdefghijklmnop
 # ── Optional ──────────────────────────────────────────
 OPENAI_API_KEY=sk-...
 SCHOOL_NAMES=Interlake,Cuttlefish,Cuttlefish Independent
+SEASON_YEAR=26
 FEEDBACK_DATABASE_ID=abc123-...
 ```
 
@@ -333,6 +342,7 @@ FEEDBACK_DATABASE_ID=abc123-...
 | `IMAP_PASSWORD` | For pairings | Gmail App Password (16 chars, requires 2FA) |
 | `OPENAI_API_KEY` | Optional | Enables LLM summarization; without it, uses keyword frequency analysis |
 | `SCHOOL_NAMES` | Optional | Comma-separated school names to detect in pairings (default: `Interlake,Cuttlefish`) |
+| `SEASON_YEAR` | Optional | 2-digit season year for caselist slugs, e.g. `26` → `hspolicy26`/`ndtceda26` (default: `26`). Overridden by `@Clerk Kent set season`. |
 | `FEEDBACK_DATABASE_ID` | Optional | Notion feedback database (reserved for future features) |
 
 #### 3. Gmail App Password

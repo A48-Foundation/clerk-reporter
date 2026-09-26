@@ -2,7 +2,8 @@ const fetch = require('node-fetch');
 const Fuse = require('fuse.js');
 
 const BASE_URL = 'https://api.opencaselist.com/v1';
-const DEFAULT_CASELIST = process.env.CASELIST_SLUG || 'hspolicy25';
+const SEASON_YEAR = (process.env.SEASON_YEAR || '26').replace(/\D/g, '').slice(-2) || '26';
+const DEFAULT_CASELIST = process.env.CASELIST_SLUG || `hspolicy${SEASON_YEAR}`;
 
 class CaselistService {
   constructor() {
@@ -220,7 +221,7 @@ class CaselistService {
 
   /**
    * Build a download URL for an open source document.
-   * @param {string} opensourcePath - e.g. "hspolicy25/NorthHollywood/LeZh/NorthHollywood-LeZh-Aff-...-Round-1.docx"
+   * @param {string} opensourcePath - e.g. "hspolicy26/NorthHollywood/LeZh/NorthHollywood-LeZh-Aff-...-Round-1.docx"
    * @returns {string}
    */
   getDownloadUrl(opensourcePath) {
@@ -311,7 +312,7 @@ class CaselistService {
    * @param {string} teamCode       Full Tabroom team code (e.g. "North Hollywood LZ")
    * @param {string} side           Opponent's side: 'A' (Aff) or 'N' (Neg)
    * @param {string} [entryNames]   Tabroom entry names (e.g. "Levine & Zhang")
-   * @param {string} [caselistSlug] Defaults to hspolicy25
+   * @param {string} [caselistSlug] Defaults to hspolicy26
    * @returns {{ schoolName, teamCode, teamSlug, caselistUrl, rounds } | null}
    */
   async lookupOpponent(teamCode, side, entryNames, caselistSlug = DEFAULT_CASELIST) {
