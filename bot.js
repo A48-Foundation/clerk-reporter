@@ -916,21 +916,48 @@ class ClerkKentBot {
         // Format A: single live update pairing
         const affCode = parsed.aff?.teamCode || '';
         const negCode = parsed.neg?.teamCode || '';
-        const affIsOurs = schoolNames.some(s => affCode.toLowerCase().startsWith(s));
-        const negIsOurs = schoolNames.some(s => negCode.toLowerCase().startsWith(s));
+        const subjectCode = parsed.teamCode || '';
+        const matchesOurSchool = (code) =>
+          !!code && schoolNames.some(s => code.toLowerCase().startsWith(s));
+        const affIsOurs = matchesOurSchool(affCode);
+        const negIsOurs = matchesOurSchool(negCode);
+        const subjectIsOurs = matchesOurSchool(subjectCode);
 
         let ourTeamCode, opponentCode, opponentSide, side;
         const isFlip = parsed.side === 'FLIP';
-        if (affIsOurs) {
+        if (affIsOurs && !negIsOurs) {
           ourTeamCode = affCode;
           opponentCode = negCode;
           opponentSide = isFlip ? null : 'N';
           side = isFlip ? 'FLIP' : 'AFF';
-        } else if (negIsOurs) {
+        } else if (negIsOurs && !affIsOurs) {
           ourTeamCode = negCode;
           opponentCode = affCode;
           opponentSide = isFlip ? null : 'A';
           side = isFlip ? 'FLIP' : 'NEG';
+        } else if (subjectIsOurs) {
+          // The body's competitor lines didn't cleanly identify us — this happens
+          // when the plain-text body parses partially and the LLM fallback mangles
+          // the team codes. The email subject is the reliable identity (the
+          // notification is addressed to our team), so route on it and derive the
+          // opponent/side from whatever body data is available.
+          ourTeamCode = subjectCode;
+          const parsedSide = (parsed.side || '').toUpperCase();
+          if (parsedSide === 'AFF') {
+            opponentCode = negCode; opponentSide = 'N'; side = 'AFF';
+          } else if (parsedSide === 'NEG') {
+            opponentCode = affCode; opponentSide = 'A'; side = 'NEG';
+          } else if (parsedSide === 'FLIP') {
+            opponentCode = negCode || affCode; opponentSide = null; side = 'FLIP';
+          } else {
+            // Unknown side — the opponent is whichever competitor isn't our school.
+            opponentCode = (affCode && !affIsOurs) ? affCode : (!negIsOurs ? negCode : '');
+            opponentSide = null; side = null;
+          }
+          // Never scout ourselves: if the derived opponent is our own school
+          // (e.g. a hallucinated code), drop it so we still post judge/room info.
+          if (matchesOurSchool(opponentCode)) opponentCode = '';
+          console.log(`[handlePairingEvent] Routing on subject identity: "${ourTeamCode}" (opponent: "${opponentCode || 'unknown'}", side: ${side || 'unknown'})`);
         } else {
           // Not our team — check if this is a coach assignment email
           const coachData = this.store.getCoaches();
@@ -977,6 +1004,41 @@ class ClerkKentBot {
   }
 
   /**
+   * Resolve the Discord channel id for a team code from the active session's
+   * channelMappings, tolerant of team-code spelling differences between setup
+   * (entries page) and the pairing email:
+   *   1. exact key match
+   *   2. normalized match (case-insensitive, collapsed whitespace)
+   *   3. suffix match (same debater initials, e.g. full names ↔ short code)
+   * Returns the channelId string, or null if nothing matches.
+   */
+  _resolveChannelId(session, teamCode) {
+    const mappings = (session && session.channelMappings) || {};
+    if (!teamCode) return null;
+    if (mappings[teamCode]) return mappings[teamCode];
+
+    const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const target = norm(teamCode);
+    for (const [key, id] of Object.entries(mappings)) {
+      if (norm(key) === target) return id;
+    }
+
+    const mapper = this.channelMapper || new ChannelMapper(null);
+    const wanted = new Set(
+      mapper.candidateSuffixes(teamCode).map((c) => c.toLowerCase())
+    );
+    if (wanted.size > 0) {
+      for (const [key, id] of Object.entries(mappings)) {
+        const keySuffixes = mapper
+          .candidateSuffixes(key)
+          .map((c) => c.toLowerCase());
+        if (keySuffixes.some((c) => wanted.has(c))) return id;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Process a single team's pairing: look up opponent, judges, send report.
    */
   async _processSinglePairing(pairing, session) {
@@ -992,7 +1054,7 @@ class ClerkKentBot {
     this.store.markPairingReported(dedupKey);
 
     // Find the channel for our team
-    const channelId = session.channelMappings[ourTeamCode];
+    const channelId = this._resolveChannelId(session, ourTeamCode);
     if (!channelId) {
       console.warn(`[Pairing] No channel mapped for ${ourTeamCode}`);
       return;
