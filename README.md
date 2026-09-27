@@ -410,7 +410,7 @@ npm start
 npm test
 ```
 
-The test suite includes **217 tests** across 11 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **218 tests** across 11 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|

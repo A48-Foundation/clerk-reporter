@@ -56,3 +56,21 @@ describe('Bot._resolveChannelId', () => {
     expect(bot._resolveChannelId(null, 'Interlake WY')).toBeNull();
   });
 });
+
+describe('Bot.handleMessage judge lookup routing', () => {
+  test('treats otherwise unrecognized text as a judge name', async () => {
+    const bot = new Bot();
+    bot.handleJudgeLookup = jest.fn().mockResolvedValue();
+    const message = {
+      author: { bot: false },
+      content: '<@123> neo cai',
+      mentions: { has: jest.fn().mockReturnValue(true) },
+      reply: jest.fn(),
+    };
+
+    await bot.handleMessage(message);
+
+    expect(bot.handleJudgeLookup).toHaveBeenCalledWith(message, 'neo cai');
+    expect(message.reply).not.toHaveBeenCalled();
+  });
+});

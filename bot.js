@@ -301,9 +301,13 @@ class ClerkKentBot {
       return;
     }
 
-    // Default: show help for unrecognized commands
-    console.log(`[handleMessage] Unrecognized command: "${content}"`);
-    await message.reply({ embeds: [this.buildHelpEmbed()] });
+    if (lowerContent === 'help' || lowerContent === 'commands') {
+      await message.reply({ embeds: [this.buildHelpEmbed()] });
+      return;
+    }
+
+    // Any remaining text is a judge name.
+    await this.handleJudgeLookup(message, content);
   }
 
   // ─── PAIRINGS PIPELINE COMMANDS ─────────────────────────────────
