@@ -199,7 +199,7 @@ const scenarios = [
         opponent: 'Assign Opponent BO',
         caselist: true,
         judges: [
-          { name: 'Assignment Two', paradigm: true, comments: true },
+          { name: 'Assignment Two', paradigm: true, comments: false },
           { name: 'Assignment Three', paradigm: false, comments: false },
         ],
       },
@@ -454,6 +454,7 @@ async function main() {
     bot.cache.saveParadigms(tournamentId, {
       [TournamentCache.normalizeName('Cached Judge')]: syntheticParadigm('Cached Judge'),
       [TournamentCache.normalizeName('Missing Judge')]: null,
+      [TournamentCache.normalizeName('Assignment Two')]: syntheticParadigm('Assignment Two'),
     }, { tournamentName: 'E2E' });
 
     const liveCaselistLookup = bot.caselistService.lookupOpponent.bind(bot.caselistService);
@@ -477,7 +478,7 @@ async function main() {
     bot.notion.searchJudge = async name => {
       serviceCalls.notion.push(name);
       if (name === 'Tom Mickelson') return liveNotionLookup(name);
-      if (['Cached Judge', 'Live Fallback Judge', 'Assignment Two'].includes(name)) {
+      if (['Cached Judge', 'Live Fallback Judge'].includes(name)) {
         return [{
           name,
           url: `https://www.notion.so/e2e-${name.toLowerCase().replace(/\s+/g, '-')}`,
@@ -613,8 +614,10 @@ async function main() {
     assert(serviceCalls.caselist.includes('Coppell PK'));
     assert(!serviceCalls.paradigm.includes('Cached Judge'), 'Paradigm cache hit called live service');
     assert(!serviceCalls.paradigm.includes('Missing Judge'), 'Cached paradigm miss called live service');
+    assert(!serviceCalls.paradigm.includes('Assignment Two'), 'Multi-judge cache hit called live service');
     assert(serviceCalls.paradigm.includes('Live Fallback Judge'));
     assert(serviceCalls.paradigm.includes('Tom Mickelson'));
+    assert(serviceCalls.notion.includes('Tom Mickelson'));
 
     console.log(
       `[E2E] PASS: ${scenarios.length} emails exercised ${expectedReports.length} reports across all matrix branches`,
