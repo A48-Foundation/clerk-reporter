@@ -596,7 +596,7 @@ class ClerkKentBot {
               `${teamList}\n\n` +
               `📑 Caselist: **${caselistLabel}** (\`${caselistSlug}\`)\n` +
               `📧 Email monitor started — pairing reports will be sent automatically.\n` +
-              `⏳ Automatically caching opponents and Policy/CX judges…\n` +
+              `⏳ Automatically caching opponents and judges for the selected event…\n` +
               `Use \`@Clerk Kent stop pairings\` to stop.`
             )
             .setColor(0x2ecc71)
@@ -1607,7 +1607,7 @@ class ClerkKentBot {
     try {
       const judgesUrl = await TabroomScraper.findJudgesUrl(session.tournId, session.eventId);
       if (!judgesUrl) {
-        throw new Error('Policy/CX judges link was not found on Tabroom');
+        throw new Error('judges category for the selected event was not found on Tabroom');
       }
       const paradigms = await this._primeParadigmCache({
         tournId: session.tournId,
@@ -1651,7 +1651,7 @@ class ClerkKentBot {
   async _primeParadigmCache({ tournId, judgesUrl, judgeList: providedJudgeList, onProgress }) {
     const judgeList = providedJudgeList || await this._scrapeJudgesList(judgesUrl);
     if (judgeList.length === 0) {
-      throw new Error('No judges found on the resolved Policy/CX judges page');
+      throw new Error('No judges found on the selected event judges page');
     }
 
     const judges = {};

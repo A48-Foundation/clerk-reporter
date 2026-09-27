@@ -112,7 +112,7 @@ describe('Bot.handleMessage judge lookup routing', () => {
 });
 
 describe('Bot automatic session caching', () => {
-  test('primes opponents and the resolved Policy/CX judge pool', async () => {
+  test('primes opponents and the resolved selected-event judge pool', async () => {
     const bot = new Bot();
     bot._primeOpponentCache = jest.fn().mockResolvedValue({ teamCount: 12, withData: 8 });
     bot._primeParadigmCache = jest.fn().mockResolvedValue({ judgeCount: 20, withParadigm: 15 });

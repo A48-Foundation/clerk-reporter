@@ -58,4 +58,23 @@ describe('TabroomScraper.findJudgesUrl', () => {
     expect(url).toContain('category_id=20');
     fetchPage.mockRestore();
   });
+
+  test('matches a changing event label from event_id to its judge category', async () => {
+    const fetchPage = jest.spyOn(TabroomScraper, 'authenticatedFetch')
+      .mockResolvedValueOnce(`
+        <select name="event_id">
+          <option value="122">Novice Flight</option>
+          <option value="123" selected>Championship Flight</option>
+        </select>
+      `)
+      .mockResolvedValueOnce(`
+        <div><div>Novice Flight <span><a href="/index/tourn/judges.mhtml?category_id=10&tourn_id=99">List</a></span></div></div>
+        <div><div>Championship Flight <span><a href="/index/tourn/judges.mhtml?category_id=20&tourn_id=99">List</a></span></div></div>
+      `);
+
+    const url = await TabroomScraper.findJudgesUrl('99', '123');
+
+    expect(url).toContain('category_id=20');
+    fetchPage.mockRestore();
+  });
 });

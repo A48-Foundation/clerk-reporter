@@ -59,9 +59,9 @@ async function main() {
     const judgesUrl = await TabroomScraper.findJudgesUrl('40918', '389097');
     assert(
       judgesUrl?.includes('judges.mhtml') && judgesUrl.includes('category_id='),
-      `Could not resolve the Mid America Cup Policy/CX judges page: ${judgesUrl}`,
+      `Could not resolve the Mid America Cup selected-event judges page: ${judgesUrl}`,
     );
-    console.log(`[REPLAY] Resolved Policy/CX judges page: ${judgesUrl}`);
+    console.log(`[REPLAY] Resolved selected-event judges page: ${judgesUrl}`);
 
     const originalSend = targetChannel.send.bind(targetChannel);
     targetChannel.send = async payload => {

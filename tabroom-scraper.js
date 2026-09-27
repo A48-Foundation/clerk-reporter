@@ -359,9 +359,9 @@ class TabroomScraper {
   }
 
   /**
-   * Resolve the tournament's Policy/CX judges-list URL from Tabroom navigation.
-   * Category IDs are distinct from event IDs, so they must be discovered from
-   * links on the tournament pages rather than inferred.
+   * Resolve the selected event's judges-list URL from Tabroom navigation.
+   * Category IDs are distinct from event IDs, so the event label from the
+   * entries page is matched against category labels on the judges index.
    */
   static async findJudgesUrl(tournId, eventId) {
     const pages = [
@@ -374,11 +374,38 @@ class TabroomScraper {
     }
 
     const candidates = new Map();
+    const eventLabels = new Set();
+    const normalizeLabel = (value) => String(value || '')
+      .toLowerCase()
+      .replace(/\bcross[-\s]?examination\b/g, 'policy')
+      .replace(/\bcx\b/g, 'policy')
+      .replace(/\bdebate\b/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    const eventMatchScore = (context) => {
+      const normalizedContext = normalizeLabel(context);
+      if (!normalizedContext) return 0;
+      const contextTokens = new Set(normalizedContext.split(/\s+/));
+      let best = 0;
+      for (const label of eventLabels) {
+        if (normalizedContext.includes(label) || label.includes(normalizedContext)) {
+          best = Math.max(best, 20);
+          continue;
+        }
+        const labelTokens = label.split(/\s+/);
+        const overlap = labelTokens.filter(token => contextTokens.has(token)).length;
+        if (overlap > 0 && overlap === Math.min(labelTokens.length, contextTokens.size)) {
+          best = Math.max(best, 15);
+        }
+      }
+      return best;
+    };
     const addCandidate = (rawUrl, context) => {
       try {
         const url = new URL(String(rawUrl).replace(/&amp;/g, '&'), BASE_URL);
         if (!url.searchParams.get('tourn_id')) url.searchParams.set('tourn_id', tournId);
-        const score = (/\b(policy|cx)\b/i.test(context) ? 10 : 0) +
+        const score = eventMatchScore(context) +
+          (/\b(policy|cx)\b/i.test(context) ? 10 : 0) +
           (url.searchParams.get('category_id') ? 2 : 0);
         const existing = candidates.get(url.toString());
         if (!existing || score > existing.score) {
@@ -388,6 +415,23 @@ class TabroomScraper {
     };
     const collectCandidates = (html, pageUrl) => {
       const $ = cheerio.load(html);
+      if (eventId) {
+        $('select[name*="event"] option, a[href*="event_id"]').each((_, element) => {
+          const value = $(element).attr('value') || $(element).attr('href') || '';
+          let linkedEventId = null;
+          if (/^\d+$/.test(value)) {
+            linkedEventId = value;
+          } else {
+            try {
+              linkedEventId = new URL(value.replace(/&amp;/g, '&'), BASE_URL)
+                .searchParams.get('event_id');
+            } catch (_) { /* ignore malformed event links */ }
+          }
+          if (linkedEventId !== String(eventId) && !$(element).is('[selected]')) return;
+          const label = normalizeLabel($(element).text());
+          if (label) eventLabels.add(label);
+        });
+      }
       $('a[href*="judges.mhtml"]').each((_, el) => {
         const href = $(el).attr('href') || '';
         if (!href) return;
@@ -419,20 +463,24 @@ class TabroomScraper {
     for (const page of pages) {
       const html = await this.authenticatedFetch(page);
       collectCandidates(html, page);
-      if ([...candidates.values()].some(candidate => candidate.score >= 12)) break;
+      if ([...candidates.values()].some(candidate => candidate.score >= 22)) break;
     }
 
-    if (![...candidates.values()].some(candidate => candidate.score >= 12)) {
+    const hasCategoryCandidates = [...candidates.values()]
+      .some(candidate => new URL(candidate.url).searchParams.get('category_id'));
+    if (![...candidates.values()].some(candidate => candidate.score >= 22) && !hasCategoryCandidates) {
       const categoryIndexes = [...candidates.values()]
         .filter(candidate => !new URL(candidate.url).searchParams.get('category_id'));
       for (const candidate of categoryIndexes) {
         const html = await this.authenticatedFetch(candidate.url);
         collectCandidates(html, candidate.url);
-        if ([...candidates.values()].some(item => item.score >= 12)) break;
+        if ([...candidates.values()].some(item => item.score >= 22)) break;
       }
     }
 
     const ranked = [...candidates.values()].sort((a, b) => b.score - a.score);
+    const eventMatch = ranked.find(candidate => candidate.score >= 22);
+    if (eventMatch) return eventMatch.url;
     const policyMatch = ranked.find(candidate => candidate.score >= 12);
     if (policyMatch) return policyMatch.url;
     return ranked.length === 1 ? ranked[0].url : null;

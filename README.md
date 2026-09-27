@@ -34,7 +34,7 @@ Provide a link to the tournament **entries** page on Tabroom (with `tourn_id` an
 3. Propose a channel mapping and show **Confirm** / **Cancel** buttons
 4. On confirm, start monitoring the email inbox for pairing notifications
 5. Automatically cache every opponent's Aff/Neg OpenCaselist data
-6. Resolve the tournament's Policy/CX judges page and cache paradigms and judging history
+6. Match the selected event's label to its judges category and cache paradigms and judging history
 7. Automatically send scouting reports as rounds are paired
 
 **Example:**
@@ -414,7 +414,7 @@ npm start
 npm test
 ```
 
-The test suite includes **225 tests** across 12 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **226 tests** across 12 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
