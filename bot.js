@@ -105,7 +105,7 @@ class ClerkKentBot {
     // Check for tournament management commands
     const lowerContent = content.toLowerCase();
 
-    // Fuzzy match for "initiate pairings reports" — allow typos, missing words, URL anywhere
+    // Extract Tabroom URLs once so report setup and related commands can route by URL.
     const tabroomUrlMatch = content.match(/https?:\/\/(?:www\.)?tabroom\.com\S+/i);
 
     // Coach reports — must be checked before judge lookup fallthrough
@@ -115,6 +115,12 @@ class ClerkKentBot {
       return;
     }
 
+    if (/^report\s+/i.test(content) && tabroomUrlMatch) {
+      await this.handleInitiatePairings(message, tabroomUrlMatch[0]);
+      return;
+    }
+
+    // Legacy setup phrase retained as an alias.
     if (/\binit\w*\s+pair/i.test(lowerContent) || /\bpairings?\s+reports?\b/i.test(lowerContent)) {
       const url = tabroomUrlMatch ? tabroomUrlMatch[0] : '';
       await this.handleInitiatePairings(message, url);
@@ -313,14 +319,14 @@ class ClerkKentBot {
   // ─── PAIRINGS PIPELINE COMMANDS ─────────────────────────────────
 
   /**
-   * Handle: @Clerk Kent initiate pairings reports <tabroom_entries_url>
+   * Handle: @Clerk Kent report <tabroom_entries_url>
    * Scrapes tournament entries, maps teams to channels, shows confirmation buttons.
    */
   async handleInitiatePairings(message, url) {
     if (!url) {
       await message.reply(
-        '**Usage:** `@Clerk Kent initiate pairings reports <tabroom_entries_url>`\n' +
-        '**Example:** `@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080`\n\n' +
+        '**Usage:** `@Clerk Kent report <tabroom_entries_url>`\n' +
+        '**Example:** `@Clerk Kent report https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080`\n\n' +
         'Provide a link to the tournament entries page (with `event_id` for a specific event, or just `tourn_id` to pick an event).'
       );
       return;
@@ -815,7 +821,7 @@ class ClerkKentBot {
   async handleAddEntry(message, args) {
     const session = this.store.getActiveSession();
     if (!session) {
-      await message.reply('⚠️ No active pairings session. Use `initiate pairings reports` first.');
+      await message.reply('⚠️ No active pairings session. Use `@Clerk Kent report <entries_url>` first.');
       return;
     }
 
@@ -2470,7 +2476,7 @@ class ClerkKentBot {
         '**Judge Lookup:**\n' +
         '`@Clerk Kent [Judge Name]` — Look up a judge\n\n' +
         '**Automated Pairings Pipeline:**\n' +
-        '`@Clerk Kent initiate pairings reports <entries_url>` — Start auto reports via email\n' +
+        '`@Clerk Kent report <entries_url>` — Start auto reports and prime tournament caches\n' +
         '`@Clerk Kent add entry <team_code> #channel` — Manually add a team to track\n' +
         '`@Clerk Kent stop pairings` — Stop the automated pipeline\n\n' +
         '**Pre-caching (prime data before/during a tournament):**\n' +
@@ -2495,7 +2501,7 @@ class ClerkKentBot {
         '`@Clerk Kent Smith` — Judge lookup\n' +
         '`@Clerk Kent set schools Dartmouth`\n' +
         '`@Clerk Kent report coaches https://www.tabroom.com/index/tourn/judges.mhtml?category_id=96220&tourn_id=36156`\n' +
-        '`@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080`'
+        '`@Clerk Kent report https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080`'
       );
   }
 

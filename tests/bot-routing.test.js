@@ -74,6 +74,41 @@ describe('Bot.handleMessage judge lookup routing', () => {
     expect(bot.handleJudgeLookup).toHaveBeenCalledWith(message, 'neo cai');
     expect(message.reply).not.toHaveBeenCalled();
   });
+
+  test('routes report with a Tabroom entries URL to automated setup', async () => {
+    const bot = new Bot();
+    bot.handleInitiatePairings = jest.fn().mockResolvedValue();
+    bot.handleReport = jest.fn().mockResolvedValue();
+    const url = 'https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=1&event_id=2';
+    const message = {
+      author: { bot: false },
+      content: `<@123> report ${url}`,
+      mentions: { has: jest.fn().mockReturnValue(true) },
+      reply: jest.fn(),
+    };
+
+    await bot.handleMessage(message);
+
+    expect(bot.handleInitiatePairings).toHaveBeenCalledWith(message, url);
+    expect(bot.handleReport).not.toHaveBeenCalled();
+  });
+
+  test('keeps report with a team code routed to manual tracking', async () => {
+    const bot = new Bot();
+    bot.handleInitiatePairings = jest.fn().mockResolvedValue();
+    bot.handleReport = jest.fn().mockResolvedValue();
+    const message = {
+      author: { bot: false },
+      content: '<@123> report SW',
+      mentions: { has: jest.fn().mockReturnValue(true) },
+      reply: jest.fn(),
+    };
+
+    await bot.handleMessage(message);
+
+    expect(bot.handleReport).toHaveBeenCalledWith(message, 'SW');
+    expect(bot.handleInitiatePairings).not.toHaveBeenCalled();
+  });
 });
 
 describe('Bot automatic session caching', () => {

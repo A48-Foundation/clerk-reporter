@@ -24,7 +24,7 @@ All commands start by @-mentioning the bot.
 #### Start Automated Reports
 
 ```
-@Clerk Kent initiate pairings reports <tabroom_entries_url>
+@Clerk Kent report <tabroom_entries_url>
 ```
 
 Provide a link to the tournament **entries** page on Tabroom (with `tourn_id` and `event_id`). The bot will:
@@ -40,7 +40,7 @@ Provide a link to the tournament **entries** page on Tabroom (with `tourn_id` an
 **Example:**
 
 ```
-@Clerk Kent initiate pairings reports https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080
+@Clerk Kent report https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=36452&event_id=372080
 ```
 
 If you only provide a `tourn_id` (no `event_id`), the bot will list available events and auto-select if there's exactly one policy event.
@@ -79,7 +79,7 @@ The bot remembers only the most recent round per channel.
 
 #### Pre-cache a Tournament (Opponents & Paradigms)
 
-Confirming `initiate pairings reports` primes both caches automatically. You can also run the commands below to refresh either cache during a tournament.
+Confirming `report <entries_url>` primes both caches automatically. You can also run the commands below to refresh either cache during a tournament.
 
 ```
 @Clerk Kent cache opponents <tabroom_entries_url>
@@ -414,7 +414,7 @@ npm start
 npm test
 ```
 
-The test suite includes **223 tests** across 12 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **225 tests** across 12 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
