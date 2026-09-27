@@ -133,6 +133,19 @@ describe('pairing pipeline — parse → route → send', () => {
     expect(payload.embeds.length).toBeGreaterThan(0);
   });
 
+  test('routes by the full subject identity when body parsing mangles our team code', async () => {
+    const { bot, channel, fetchedIds } = makeBot({
+      channelMappings: { 'Interlake Shreshth Seth & Aanya Chetan': 'CH_INT' },
+    });
+    const parsed = parseRound3();
+    parsed.aff.teamCode = 'Interlake A';
+
+    await bot.handlePairingEvent({ uid: 1, parsed });
+
+    expect(channel.send).toHaveBeenCalledTimes(1);
+    expect(fetchedIds).toContain('CH_INT');
+  });
+
   test('resolves the channel by debater-initial suffix when the mapping key differs', async () => {
     // Setup used a short code; the email uses full names.
     const { bot, channel, fetchedIds } = makeBot({
@@ -159,9 +172,12 @@ describe('pairing pipeline — parse → route → send', () => {
   test('a failed send stays retriable (not marked reported)', async () => {
     const { bot, session, channel } = makeBot({ channelMappings: {} }); // no channel → cannot send
 
-    await bot.handlePairingEvent({ uid: 1, parsed: parseRound3() });
+    await expect(
+      bot.handlePairingEvent({ uid: 1, parsed: parseRound3() }),
+    ).rejects.toThrow('was not delivered');
     expect(channel.send).not.toHaveBeenCalled();
     expect(session.reportedPairings).toHaveLength(0);
+    expect(session.processedEmailUids).toHaveLength(0);
 
     // Operator fixes the mapping; a re-delivered email now sends.
     session.channelMappings['Interlake Shreshth Seth & Aanya Chetan'] = 'CH_INT';

@@ -409,20 +409,20 @@ npm start
 npm test
 ```
 
-The test suite includes **216 tests** across 10 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **219 tests** across 10 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
-| `email-parser.test.js` | 67 | Subject/body parsing, pairing detection, LLM fallback, validation |
+| `email-parser.test.js` | 68 | Subject/body parsing, pairing detection, bounded LLM fallback, validation |
 | `caselist-service.test.js` | 39 | Team code parsing (short codes + full names), school lookup, wiki URL, entry name matching |
 | `tournament-store.test.js` | 33 | Load/save, team tracking, session management, email UID tracking, settings |
 | `channel-mapper.test.js` | 19 | Team suffix/candidate extraction, channel lookup, auto-mapping |
 | `llm-service.test.js` | 17 | Frequency analysis, inline doc links, paradigm truncation, LLM fallback |
 | `report-builder.test.js` | 13 | Embed construction, doc link fields, truncation, embed cap |
 | `bot-routing.test.js` | 9 | `_resolveChannelId` tolerant channel resolution (exact / normalized / suffix) |
-| `pairing-flow.test.js` | 8 | **End-to-end**: parse → route → send, dedup-after-send, retriable failures, monitor restore |
+| `pairing-flow.test.js` | 9 | **End-to-end**: parse → route → send, subject-anchored routing, dedup-after-send, retriable failures, monitor restore |
 | `tournament-cache.test.js` | 8 | Name normalization, opponent/paradigm priming, miss vs cached-empty semantics |
-| `email-monitor.test.js` | 3 | Production defaults, isolated live-test IMAP search, and E2E-message rejection |
+| `email-monitor.test.js` | 4 | Production defaults, awaited delivery-before-seen, isolated E2E search, and E2E-message rejection |
 
 #### Live email-to-Discord smoke test
 

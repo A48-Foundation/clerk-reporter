@@ -565,17 +565,24 @@ async function main() {
       processing = processing
         .then(async () => {
           const isRetry = eventData.raw.subject === scenarios.find(s => s.key === 'failed-route').email.subject;
-          await bot.handlePairingEvent(eventData);
-          if (isRetry) {
-            retryDeliveries++;
-            if (retryDeliveries === 1) {
+          if (isRetry) retryDeliveries++;
+          try {
+            await bot.handlePairingEvent(eventData);
+          } catch (error) {
+            if (!(isRetry && retryDeliveries === 1)) throw error;
+          }
+          if (isRetry && retryDeliveries === 1) {
               assert.strictEqual(
                 bot.store.activeSession.reportedPairings.some(key => key.includes('interlake rt')),
                 false,
                 'Failed route was incorrectly marked reported',
               );
+              assert.strictEqual(
+                bot.store.activeSession.processedEmailUids.includes(eventData.uid),
+                false,
+                'Failed route was incorrectly marked processed',
+              );
               bot.store.activeSession.channelMappings['Interlake RT'] = targetChannelId;
-            }
           }
         })
         .catch(error => processingErrors.push(error));

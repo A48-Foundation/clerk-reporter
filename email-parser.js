@@ -13,6 +13,8 @@
  *         ENTRIES section with team blocks (FLIP/AFF/NEG vs opponent, Judges:, Room inline)
  */
 class EmailParser {
+  static LLM_PARSE_TIMEOUT_MS = 10000;
+
   /**
    * Parse a [TAB] subject line into structured fields.
    * Format A: "[TAB] <teamCode> Round <N> <event>"
@@ -413,13 +415,24 @@ class EmailParser {
 
     // Regex parse incomplete — try LLM fallback if available
     if (llmService && llmService.enabled) {
+      let timeout;
       try {
-        const llmResult = await this._llmParse(email, llmService);
+        const llmResult = await Promise.race([
+          this._llmParse(email, llmService),
+          new Promise((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error(`LLM email parse timed out after ${this.LLM_PARSE_TIMEOUT_MS}ms`)),
+              this.LLM_PARSE_TIMEOUT_MS,
+            );
+          }),
+        ]);
         if (llmResult && this._isCompletePairing(llmResult)) {
           return llmResult;
         }
       } catch (err) {
         console.error('[EmailParser] LLM fallback failed:', err.message);
+      } finally {
+        if (timeout) clearTimeout(timeout);
       }
     }
 

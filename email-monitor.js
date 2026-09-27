@@ -264,7 +264,10 @@ class EmailMonitor extends EventEmitter {
         console.log(`[EmailMonitor] Email UID ${uid} IS a pairing email — parsing...`);
         const result = EmailParser.parse(emailData);
         console.log(`[EmailMonitor] Parsed result:`, JSON.stringify(result, null, 2).slice(0, 500));
-        this.emit('pairing', { uid, parsed: result, raw: emailData });
+        const eventData = { uid, parsed: result, raw: emailData };
+        for (const listener of this.listeners('pairing')) {
+          await listener(eventData);
+        }
         if (this.markSeen) await this._markSeen(uid);
       } catch (err) {
         console.error(`[EmailMonitor] Error processing UID ${uid}:`, err.message);

@@ -473,4 +473,39 @@ describe('parseWithFallback', () => {
     expect(result).not.toBeNull();
     expect(mockLlm.client.chat.completions.create).toHaveBeenCalled();
   });
+
+  test('returns usable regex data when the LLM fallback times out', async () => {
+    const originalTimeout = EmailParser.LLM_PARSE_TIMEOUT_MS;
+    EmailParser.LLM_PARSE_TIMEOUT_MS = 5;
+    const stalledLlm = {
+      enabled: true,
+      model: 'gpt-4o-mini',
+      client: {
+        chat: {
+          completions: {
+            create: jest.fn(() => new Promise(() => {})),
+          },
+        },
+      },
+    };
+    const partialEmail = {
+      subject: '[TAB] Interlake OC Round 5 CX',
+      from: 'tourn@www.tabroom.com',
+      body: [
+        'Round 5 of CX',
+        'Room: NSDA Campus Section 20',
+        'Judging',
+        'Test Judge',
+      ].join('\n'),
+    };
+
+    try {
+      const result = await EmailParser.parseWithFallback(partialEmail, stalledLlm);
+      expect(result.teamCode).toBe('Interlake OC');
+      expect(result.room).toBe('NSDA Campus Section 20');
+      expect(result.judges).toEqual([{ name: 'Test Judge', pronouns: null }]);
+    } finally {
+      EmailParser.LLM_PARSE_TIMEOUT_MS = originalTimeout;
+    }
+  });
 });

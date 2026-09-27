@@ -59,4 +59,35 @@ describe('EmailMonitor test isolation options', () => {
     expect(pairing).not.toHaveBeenCalled();
     expect(monitor._markSeen).toHaveBeenCalledWith(101);
   });
+
+  test('waits for pairing delivery before marking the email seen', async () => {
+    const monitor = new EmailMonitor({ email: 'x@example.com', password: 'secret' });
+    const order = [];
+    monitor._search = jest.fn().mockResolvedValue([102]);
+    monitor._fetchMessage = jest.fn().mockResolvedValue([
+      'From: tourn@www.tabroom.com',
+      'To: x@example.com',
+      'Subject: [TAB] Interlake OC Round 1 CX',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      'Round 1 of Policy',
+      'Start: 9:00 AM',
+      'Room: 101',
+      'Side: AFF',
+      'Competitors',
+      'AFF Interlake OC',
+      'NEG Coppell PK',
+      'Judging',
+      'Test Judge',
+    ].join('\r\n'));
+    monitor._markSeen = jest.fn(async () => order.push('seen'));
+    monitor.on('pairing', async () => {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      order.push('delivered');
+    });
+
+    await monitor.poll();
+
+    expect(order).toEqual(['delivered', 'seen']);
+  });
 });

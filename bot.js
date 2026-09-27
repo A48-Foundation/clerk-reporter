@@ -850,7 +850,6 @@ class ClerkKentBot {
         console.log(`[handlePairingEvent] Email UID ${uid} already processed — skipping`);
         return;
       }
-      this.store.addProcessedEmailUid(uid);
 
       // Check if this is a coach assignment email before completeness check
       // Coach emails may not pass _isCompletePairing if body parsing is partial
@@ -864,6 +863,7 @@ class ClerkKentBot {
         if (matchedCoach) {
           console.log(`[handlePairingEvent] Coach email detected: ${matchedCoach.name} (subject: "${parsed.teamCode}")`);
           await this._processCoachPairing(matchedCoach, parsed, coachData.channelId);
+          this.store.addProcessedEmailUid(uid);
           if (this.emailMonitor) this.emailMonitor.enterSlowMode();
           return;
         }
@@ -876,8 +876,7 @@ class ClerkKentBot {
           parsed = await EmailParser.parseWithFallback(raw, this.llmService);
         }
         if (!parsed) {
-          console.log(`[handlePairingEvent] Email ${uid} skipped — incomplete pairing data`);
-          return;
+          throw new Error(`Email ${uid} has no usable pairing data`);
         }
       }
 
@@ -887,6 +886,7 @@ class ClerkKentBot {
         .map(s => s.trim().toLowerCase());
 
       if (parsed.format === 'assignments') {
+        let deliveryFailed = false;
         // Format B: process each entry in the assignments email
         for (const entry of (parsed.entries || [])) {
           const isOurs = schoolNames.some(s => entry.teamCode.toLowerCase().startsWith(s));
@@ -910,8 +910,10 @@ class ClerkKentBot {
             roundNumber: null,
           };
 
-          await this._processSinglePairing(pairingData, session);
+          const delivered = await this._processSinglePairing(pairingData, session);
+          if (!delivered) deliveryFailed = true;
         }
+        if (deliveryFailed) throw new Error(`One or more reports from email ${uid} were not delivered`);
       } else {
         // Format A: single live update pairing
         const affCode = parsed.aff?.teamCode || '';
@@ -925,25 +927,22 @@ class ClerkKentBot {
 
         let ourTeamCode, opponentCode, opponentSide, side;
         const isFlip = parsed.side === 'FLIP';
-        if (affIsOurs && !negIsOurs) {
-          ourTeamCode = affCode;
-          opponentCode = negCode;
-          opponentSide = isFlip ? null : 'N';
-          side = isFlip ? 'FLIP' : 'AFF';
-        } else if (negIsOurs && !affIsOurs) {
-          ourTeamCode = negCode;
-          opponentCode = affCode;
-          opponentSide = isFlip ? null : 'A';
-          side = isFlip ? 'FLIP' : 'NEG';
-        } else if (subjectIsOurs) {
-          // The body's competitor lines didn't cleanly identify us — this happens
-          // when the plain-text body parses partially and the LLM fallback mangles
-          // the team codes. The email subject is the reliable identity (the
-          // notification is addressed to our team), so route on it and derive the
-          // opponent/side from whatever body data is available.
+        if (subjectIsOurs) {
+          // The notification subject is addressed to the exact entry and is the
+          // canonical routing identity. Body/LLM team codes may be shortened or
+          // hallucinated (for example "Interlake A"), so use them only to infer
+          // side and opponent.
           ourTeamCode = subjectCode;
           const parsedSide = (parsed.side || '').toUpperCase();
-          if (parsedSide === 'AFF') {
+          if (affIsOurs && !negIsOurs) {
+            opponentCode = negCode;
+            opponentSide = isFlip ? null : 'N';
+            side = isFlip ? 'FLIP' : 'AFF';
+          } else if (negIsOurs && !affIsOurs) {
+            opponentCode = affCode;
+            opponentSide = isFlip ? null : 'A';
+            side = isFlip ? 'FLIP' : 'NEG';
+          } else if (parsedSide === 'AFF') {
             opponentCode = negCode; opponentSide = 'N'; side = 'AFF';
           } else if (parsedSide === 'NEG') {
             opponentCode = affCode; opponentSide = 'A'; side = 'NEG';
@@ -958,6 +957,16 @@ class ClerkKentBot {
           // (e.g. a hallucinated code), drop it so we still post judge/room info.
           if (matchesOurSchool(opponentCode)) opponentCode = '';
           console.log(`[handlePairingEvent] Routing on subject identity: "${ourTeamCode}" (opponent: "${opponentCode || 'unknown'}", side: ${side || 'unknown'})`);
+        } else if (affIsOurs && !negIsOurs) {
+          ourTeamCode = affCode;
+          opponentCode = negCode;
+          opponentSide = isFlip ? null : 'N';
+          side = isFlip ? 'FLIP' : 'AFF';
+        } else if (negIsOurs && !affIsOurs) {
+          ourTeamCode = negCode;
+          opponentCode = affCode;
+          opponentSide = isFlip ? null : 'A';
+          side = isFlip ? 'FLIP' : 'NEG';
         } else {
           // Not our team — check if this is a coach assignment email
           const coachData = this.store.getCoaches();
@@ -971,11 +980,13 @@ class ClerkKentBot {
             if (matchedCoach) {
               console.log(`[handlePairingEvent] Matched coach: ${matchedCoach.name}`);
               await this._processCoachPairing(matchedCoach, parsed, coachData.channelId);
+              this.store.addProcessedEmailUid(uid);
               if (this.emailMonitor) this.emailMonitor.enterSlowMode();
               return;
             }
             console.log(`[handlePairingEvent] No coach match found`);
           }
+          this.store.addProcessedEmailUid(uid);
           return;
         }
 
@@ -993,13 +1004,17 @@ class ClerkKentBot {
           neg: parsed.neg,
         };
 
-        await this._processSinglePairing(pairingData, session);
+        const delivered = await this._processSinglePairing(pairingData, session);
+        if (!delivered) throw new Error(`Pairing report from email ${uid} was not delivered`);
       }
+
+      this.store.addProcessedEmailUid(uid);
 
       // Switch to slow polling now that a round is in progress
       if (this.emailMonitor) this.emailMonitor.enterSlowMode();
     } catch (err) {
       console.error('[handlePairingEvent] Error:', err);
+      throw err;
     }
   }
 
@@ -1051,18 +1066,18 @@ class ClerkKentBot {
     const dedupKey = `${ourTeamCode}::${roundTitle || ''}::${roundNumber || ''}`.toLowerCase();
     if (this.store.isPairingReported(dedupKey)) {
       console.log(`[Pairing] Skipping duplicate report for ${ourTeamCode} in ${roundTitle || 'Round ' + roundNumber}`);
-      return;
+      return true;
     }
 
     // Find the channel for our team
     const channelId = this._resolveChannelId(session, ourTeamCode);
     if (!channelId) {
       console.warn(`[Pairing] No channel mapped for ${ourTeamCode}`);
-      return;
+      return false;
     }
 
     const channel = await this.client.channels.fetch(channelId);
-    if (!channel) return;
+    if (!channel) return false;
 
     await channel.sendTyping();
 
@@ -1247,6 +1262,7 @@ class ClerkKentBot {
       // No judges — mirror the initial embeds
       await this._mirrorToHQ(initialEmbeds);
     }
+    return !!sentMessage;
   }
 
   /**
