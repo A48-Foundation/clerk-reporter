@@ -1,4 +1,5 @@
 const assert = require('assert');
+const cheerio = require('cheerio');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -57,6 +58,32 @@ async function main() {
     assert(targetChannel?.isTextBased(), `Discord channel ${targetChannelId} is not text-based`);
 
     const judgesUrl = await TabroomScraper.findJudgesUrl('40918', '389097');
+    if (!judgesUrl) {
+      const genericUrl = 'https://www.tabroom.com/index/tourn/judges.mhtml?tourn_id=40918';
+      const html = await TabroomScraper.authenticatedFetch(genericUrl);
+      const $ = cheerio.load(html);
+      const selects = $('select').map((_, select) => ({
+        name: $(select).attr('name') || null,
+        id: $(select).attr('id') || null,
+        options: $(select).find('option').map((__, option) => ({
+          text: $(option).text().replace(/\s+/g, ' ').trim(),
+          value: $(option).attr('value') || null,
+        })).get(),
+      })).get();
+      const links = $('a').map((_, link) => ({
+        text: $(link).text().replace(/\s+/g, ' ').trim(),
+        href: $(link).attr('href') || null,
+      })).get().filter(link =>
+        /judge|policy|cx|category/i.test(`${link.text} ${link.href}`),
+      );
+      console.log('[REPLAY] Judge navigation diagnostics:', JSON.stringify({
+        title: $('title').text().trim(),
+        headings: $('h1, h2, h3, h4').map((_, heading) =>
+          $(heading).text().replace(/\s+/g, ' ').trim()).get(),
+        selects,
+        links,
+      }));
+    }
     assert(
       judgesUrl?.includes('judges.mhtml') && judgesUrl.includes('category_id='),
       `Could not resolve the Mid America Cup Policy/CX judges page: ${judgesUrl}`,
