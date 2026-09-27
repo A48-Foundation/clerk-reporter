@@ -1,106 +1,291 @@
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const nodemailer = require('nodemailer');
 
 process.env.DISCORD_TOKEN = process.env.E2E_DISCORD_TOKEN || '';
-process.env.NOTION_TOKEN = process.env.NOTION_TOKEN || 'e2e-not-used';
-process.env.JUDGE_DATABASE_ID = process.env.JUDGE_DATABASE_ID || 'e2e-not-used';
+process.env.TABROOM_EMAIL = process.env.E2E_TABROOM_EMAIL || '';
+process.env.TABROOM_PASSWORD = process.env.E2E_TABROOM_PASSWORD || '';
+process.env.NOTION_TOKEN = process.env.E2E_NOTION_TOKEN || '';
+process.env.JUDGE_DATABASE_ID = process.env.E2E_JUDGE_DATABASE_ID || '';
 process.env.OPENAI_API_KEY = '';
 
 const { Events } = require('discord.js');
 const Bot = require('../bot');
 const EmailMonitor = require('../email-monitor');
-const {
-  formatA_stanford,
-  formatA_flip,
-  formatB_multipleEntries,
-} = require('../tests/fixtures/emails');
+const TournamentCache = require('../tournament-cache');
 
 const required = [
   'E2E_GMAIL_EMAIL',
   'E2E_GMAIL_APP_PASSWORD',
   'E2E_DISCORD_TOKEN',
   'E2E_DISCORD_CHANNEL_ID',
+  'E2E_TABROOM_EMAIL',
+  'E2E_TABROOM_PASSWORD',
+  'E2E_NOTION_TOKEN',
+  'E2E_JUDGE_DATABASE_ID',
 ];
 for (const name of required) {
   if (!process.env[name]) throw new Error(`Missing required environment variable: ${name}`);
 }
 
-const FULL_NAMES = {
-  input: {
-    subject: '[TAB] Interlake Shreshth Seth & Aanya Chetan Round 3 CX',
+function liveUpdate({
+  team,
+  opponent,
+  round,
+  side,
+  room,
+  judges,
+  start = '1:30 CDT',
+  event = 'CX',
+}) {
+  const aff = side === 'NEG' ? opponent : team;
+  const neg = side === 'NEG' ? team : opponent;
+  return {
+    subject: `[TAB] ${team} Round ${round} ${event}`,
     body: [
-      'Round 3 of Policy',
-      'Start: 1:30 CDT',
+      `Round ${round} of Policy`,
+      `Start: ${start}`,
       '',
-      'Room: NSDA Campus Section 13',
+      `Room: ${room}`,
       '',
-      'Side: AFF',
+      `Side: ${side}`,
       '',
       'Competitors',
       '',
-      'AFF Interlake Shreshth Seth & Aanya Chetan',
+      `AFF ${aff}`,
       '',
-      'NEG Lowell Benjamin Chan & Paxson Yee Smith',
+      `NEG ${neg}`,
       '',
       'Judging',
       '',
-      'Miriam Mokhemar',
+      ...judges.flatMap((judge, index) => index === 0 ? [judge] : ['', judge]),
       '',
       '-----------------------------',
       'You received this email because you registered for an account on https://www.tabroom.com',
     ].join('\n'),
-  },
+  };
+}
+
+function flipUpdate({ team, opponent, room, judges }) {
+  return {
+    subject: `[TAB] ${team} Doubles CX`,
+    body: [
+      'Doubles of Policy',
+      'Start: 3:30 CDT',
+      '',
+      `Room: ${room}`,
+      '',
+      'Competitors',
+      '',
+      'FLIP FOR SIDES:',
+      '',
+      team,
+      '',
+      opponent,
+      '',
+      'Judging',
+      '',
+      ...judges.flatMap((judge, index) => index === 0 ? [judge] : ['', judge]),
+    ].join('\n'),
+  };
+}
+
+const assignmentEmail = {
+  subject: '[TAB] Interlake Round Assignments',
+  body: [
+    'Full assignments for Interlake',
+    '',
+    'Policy Open Round 44 Start 2:30 PM',
+    '',
+    'ENTRIES',
+    'Interlake AA',
+    '         AFF vs Assign Opponent AO',
+    '        Judges: Assignment One     Room 401',
+    'Interlake BB',
+    '         NEG vs Assign Opponent BO',
+    '        Judges: Assignment Two, Assignment Three     Room 402',
+    '',
+    '-----------------------------',
+  ].join('\n'),
 };
 
-const CASES = [
+const malformedEmail = {
+  subject: '[TAB] Interlake MF Round 46 CX',
+  body: [
+    'PAIRING DATA (nonstandard export)',
+    'Interlake MF debates Odd Format OF at 4:00 PM in Room 406.',
+    'Interlake MF is affirmative. Adjudicator: Fallback Judge.',
+  ].join('\n'),
+};
+
+const scenarios = [
   {
-    name: 'live update with short codes',
-    email: formatA_stanford.input,
-    expected: {
-      title: '📋 R4',
-      room: 'NSDA Campus Section 18',
-      opponent: 'Arizona Chandler Independent LS',
-      judges: ['Evan Alexis'],
-    },
+    key: 'cache-hit',
+    email: liveUpdate({
+      team: 'Interlake CH',
+      opponent: 'Cache Academy CH',
+      round: 41,
+      side: 'AFF',
+      room: '401A',
+      judges: ['Cached Judge'],
+    }),
+    reports: [{
+      title: '📋 R41',
+      room: '401A',
+      opponent: 'Cache Academy CH',
+      caselist: true,
+      judges: [{ name: 'Cached Judge', paradigm: true, comments: true }],
+    }],
   },
   {
-    name: 'live update with full debater names',
-    email: FULL_NAMES.input,
-    expected: {
-      title: '📋 R3',
-      room: 'NSDA Campus Section 13',
-      opponent: 'Lowell Benjamin Chan & Paxson Yee Smith',
-      judges: ['Miriam Mokhemar'],
-    },
+    key: 'duplicate-cache-hit',
+    duplicateOf: 'cache-hit',
   },
   {
-    name: 'round assignments entry 1',
-    email: formatB_multipleEntries.input,
-    expected: { title: '📋 R3', room: '101', opponent: 'Coppell PK', judges: ['Bob Jones'] },
+    key: 'cached-miss-normalized-route',
+    email: liveUpdate({
+      team: 'Interlake NM',
+      opponent: 'No Data ND',
+      round: 42,
+      side: 'NEG',
+      room: '402A',
+      judges: ['Missing Judge', 'Second Judge'],
+    }),
+    reports: [{
+      title: '📋 R42',
+      room: '402A',
+      opponent: 'No Data ND',
+      caselist: false,
+      judges: [
+        { name: 'Missing Judge', paradigm: false, comments: false },
+        { name: 'Second Judge', paradigm: true, comments: false },
+      ],
+    }],
   },
   {
-    name: 'round assignments entry 2',
-    email: null,
-    expected: {
-      title: '📋 R3',
-      room: '205',
-      opponent: 'Montgomery Bell MB',
-      judges: ['Alice Chen', 'David Lee'],
-    },
+    key: 'full-names-initials-route-live-fallback',
+    email: liveUpdate({
+      team: 'Interlake Shreshth Seth & Aanya Chetan',
+      opponent: 'Live Academy Alice Alpha & Bob Beta',
+      round: 43,
+      side: 'AFF',
+      room: '403A',
+      judges: ['Live Fallback Judge'],
+    }),
+    reports: [{
+      title: '📋 R43',
+      room: '403A',
+      opponent: 'Live Academy Alice Alpha & Bob Beta',
+      caselist: true,
+      judges: [{ name: 'Live Fallback Judge', paradigm: true, comments: true }],
+    }],
   },
   {
-    name: 'FLIP pairing',
-    email: formatA_flip.input,
-    expected: {
-      title: '📋 Doubles of Policy - TOC',
-      room: 'NSDA Campus Section 6',
-      opponent: 'Peninsula BB',
-      judges: ['Evan Alexis', 'Eli Hatton', 'Jayden Sampat'],
-    },
+    key: 'multi-team-assignments',
+    email: assignmentEmail,
+    reports: [
+      {
+        title: '📋 R44',
+        room: '401',
+        opponent: 'Assign Opponent AO',
+        caselist: true,
+        judges: [{ name: 'Assignment One', paradigm: true, comments: false }],
+      },
+      {
+        title: '📋 R44',
+        room: '402',
+        opponent: 'Assign Opponent BO',
+        caselist: true,
+        judges: [
+          { name: 'Assignment Two', paradigm: true, comments: true },
+          { name: 'Assignment Three', paradigm: false, comments: false },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'flip',
+    email: flipUpdate({
+      team: 'Interlake FL',
+      opponent: 'Flip Opponent FO',
+      room: '405A',
+      judges: ['Flip Judge'],
+    }),
+    reports: [{
+      title: '📋 Doubles of Policy',
+      room: '405A',
+      opponent: 'Flip Opponent FO',
+      caselist: true,
+      judges: [{ name: 'Flip Judge', paradigm: true, comments: false }],
+    }],
+  },
+  {
+    key: 'malformed-llm-fallback',
+    email: malformedEmail,
+    reports: [{
+      title: '📋 R46',
+      room: '406A',
+      opponent: 'Odd Format OF',
+      caselist: true,
+      judges: [{ name: 'Fallback Judge', paradigm: true, comments: false }],
+    }],
+  },
+  {
+    key: 'failed-route',
+    email: liveUpdate({
+      team: 'Interlake RT',
+      opponent: 'Retry Opponent RO',
+      round: 47,
+      side: 'AFF',
+      room: '407A',
+      judges: ['Retry Judge'],
+    }),
+  },
+  {
+    key: 'failed-route-retry',
+    duplicateOf: 'failed-route',
+    reports: [{
+      title: '📋 R47',
+      room: '407A',
+      opponent: 'Retry Opponent RO',
+      caselist: true,
+      judges: [{ name: 'Retry Judge', paradigm: true, comments: false }],
+    }],
+  },
+  {
+    key: 'live-external-contract',
+    email: liveUpdate({
+      team: 'Interlake LC',
+      opponent: 'Coppell PK',
+      round: 48,
+      side: 'AFF',
+      room: '408A',
+      judges: ['Tom Mickelson'],
+    }),
+    reports: [{
+      title: '📋 R48',
+      room: '408A',
+      opponent: 'Coppell PK',
+      caselist: true,
+      liveCaselist: true,
+      judges: [{
+        name: 'Tom Mickelson',
+        paradigm: true,
+        liveParadigm: true,
+        comments: true,
+        liveNotion: true,
+      }],
+    }],
   },
 ];
 
-const EMAILS = CASES.filter(testCase => testCase.email).map(testCase => testCase.email);
+const byKey = new Map(scenarios.map(scenario => [scenario.key, scenario]));
+for (const scenario of scenarios) {
+  if (scenario.duplicateOf) scenario.email = byKey.get(scenario.duplicateOf).email;
+}
+const expectedReports = scenarios.flatMap(scenario => scenario.reports || []);
 
 function plusAddress(email, tag) {
   const at = email.lastIndexOf('@');
@@ -109,7 +294,32 @@ function plusAddress(email, tag) {
 }
 
 function fieldValue(embed, name) {
-  return embed.fields.find(field => field.name === name)?.value;
+  return (embed.fields || []).find(field => field.name === name)?.value;
+}
+
+function syntheticLookup(teamCode, side) {
+  const slug = teamCode.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return {
+    schoolName: teamCode,
+    teamCode: '',
+    teamSlug: slug,
+    caselistUrl: `https://opencaselist.com/hspolicy26/e2e/${slug}/${side === 'A' ? 'Aff' : 'Neg'}`,
+    rounds: [{
+      tournament: 'E2E Tournament',
+      round: 'Test',
+      report: side === 'A' ? '1AC was test affirmative' : '2NR was test negative',
+    }],
+  };
+}
+
+function syntheticParadigm(name) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  return {
+    name,
+    school: 'E2E',
+    philosophy: 'Synthetic paradigm content for deterministic branch coverage.',
+    paradigmUrl: `https://www.tabroom.com/index/paradigm.mhtml?judge_person_id=e2e-${slug}`,
+  };
 }
 
 async function waitFor(condition, timeoutMs, description) {
@@ -137,13 +347,57 @@ async function retry(label, operation, attempts = 3) {
   throw lastError;
 }
 
+function assertReport(message, expected) {
+  const embeds = message.embeds.map(embed => embed.toJSON());
+  const pairing = embeds[0];
+  assert.strictEqual(pairing.title, expected.title);
+  assert.strictEqual(fieldValue(pairing, 'Room'), expected.room);
+
+  const opponentField = (pairing.fields || []).find(field => field.name.includes(expected.opponent));
+  assert(opponentField, `${expected.title}/${expected.room}: missing opponent ${expected.opponent}`);
+  const hasCaselistLink = /https:\/\/opencaselist\.com\//i.test(opponentField.value);
+  assert.strictEqual(
+    hasCaselistLink,
+    expected.caselist,
+    `${expected.title}/${expected.room}: unexpected caselist-link state`,
+  );
+  if (expected.liveCaselist) {
+    assert(
+      /https:\/\/opencaselist\.com\/hspolicy26\/Coppell\//i.test(opponentField.value),
+      'Live OpenCaselist contract did not produce the configured Coppell URL',
+    );
+  }
+
+  for (const expectedJudge of expected.judges) {
+    const judge = embeds.find(embed => embed.title === `⚖️ ${expectedJudge.name}`);
+    assert(judge, `${expected.title}/${expected.room}: missing judge ${expectedJudge.name}`);
+    const paradigm = fieldValue(judge, 'Paradigm Link');
+    assert.strictEqual(
+      paradigm !== 'N/A',
+      expectedJudge.paradigm,
+      `${expectedJudge.name}: unexpected paradigm-link state`,
+    );
+    if (expectedJudge.liveParadigm) {
+      assert(/https:\/\/www\.tabroom\.com\/index\/paradigm\.mhtml/i.test(paradigm));
+    }
+    const comments = fieldValue(judge, '**Comments**');
+    assert.strictEqual(
+      !!comments,
+      expectedJudge.comments,
+      `${expectedJudge.name}: unexpected Notion-comments state`,
+    );
+  }
+}
+
 async function main() {
   const runId = `clerk-e2e-${process.env.GITHUB_RUN_ID || Date.now()}-${process.env.GITHUB_RUN_ATTEMPT || 1}`;
   const recipient = plusAddress(process.env.E2E_GMAIL_EMAIL, runId);
   const targetChannelId = process.env.E2E_DISCORD_CHANNEL_ID;
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clerk-e2e-cache-'));
   const sentMessages = [];
   const receivedUids = new Set();
   const processingErrors = [];
+  const serviceCalls = { caselist: [], paradigm: [], notion: [] };
   let monitor;
   let bot;
 
@@ -167,14 +421,19 @@ async function main() {
     bot.client.channels.fetch = async id =>
       String(id) === String(targetChannelId) ? targetChannel : originalFetch(id);
 
+    const tournamentId = `e2e-${runId}`;
     bot.store.activeSession = {
-      tournId: `e2e-${runId}`,
+      tournId: tournamentId,
       tournamentUrl: 'https://example.invalid/e2e',
       channelMappings: {
-        'Interlake OC': targetChannelId,
-        'Interlake Shreshth Seth & Aanya Chetan': targetChannelId,
-        'Interlake CG': targetChannelId,
-        'Interlake SW': targetChannelId,
+        'Interlake CH': targetChannelId,
+        '  interlake   nm  ': targetChannelId,
+        'Interlake SC': targetChannelId,
+        'Interlake AA': targetChannelId,
+        'Interlake BB': targetChannelId,
+        'Interlake FL': targetChannelId,
+        'Interlake MF': targetChannelId,
+        'Interlake LC': targetChannelId,
       },
       processedEmailUids: [],
       reportedPairings: [],
@@ -185,10 +444,75 @@ async function main() {
     bot.store.getCaselistForTeam = () => 'hspolicy26';
     bot.store.getEntryNamesForTeam = () => null;
     bot.store.getCoaches = () => null;
-    bot._lookupOpponentCached = async () => ({ rounds: [] });
-    bot._fetchParadigmCached = async () => null;
-    bot.notion.searchJudge = async () => [];
     bot._mirrorToHQ = async () => {};
+
+    bot.cache = new TournamentCache(cacheDir);
+    bot.cache.saveOpponents(tournamentId, { tournamentName: 'E2E' }, {
+      'cache academy ch': { N: syntheticLookup('Cache Academy CH', 'N') },
+      'no data nd': { A: null },
+    });
+    bot.cache.saveParadigms(tournamentId, {
+      [TournamentCache.normalizeName('Cached Judge')]: syntheticParadigm('Cached Judge'),
+      [TournamentCache.normalizeName('Missing Judge')]: null,
+    }, { tournamentName: 'E2E' });
+
+    const liveCaselistLookup = bot.caselistService.lookupOpponent.bind(bot.caselistService);
+    bot.caselistService.lookupOpponent = async (teamCode, side, entryNames, caselistSlug) => {
+      serviceCalls.caselist.push(teamCode);
+      if (teamCode === 'Coppell PK') {
+        return liveCaselistLookup(teamCode, side, entryNames, caselistSlug);
+      }
+      return syntheticLookup(teamCode, side);
+    };
+
+    const liveParadigmLookup = bot.paradigmService.fetchParadigmByName.bind(bot.paradigmService);
+    bot.paradigmService.fetchParadigmByName = async name => {
+      serviceCalls.paradigm.push(name);
+      if (name === 'Tom Mickelson') return liveParadigmLookup(name);
+      if (['Assignment Three'].includes(name)) return null;
+      return syntheticParadigm(name);
+    };
+
+    const liveNotionLookup = bot.notion.searchJudge.bind(bot.notion);
+    bot.notion.searchJudge = async name => {
+      serviceCalls.notion.push(name);
+      if (name === 'Tom Mickelson') return liveNotionLookup(name);
+      if (['Cached Judge', 'Live Fallback Judge', 'Assignment Two'].includes(name)) {
+        return [{
+          name,
+          url: `https://www.notion.so/e2e-${name.toLowerCase().replace(/\s+/g, '-')}`,
+          comments: [`E2E note for ${name}`],
+        }];
+      }
+      return [];
+    };
+
+    bot.llmService.enabled = true;
+    bot.llmService._client = {
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  format: 'liveUpdate',
+                  teamCode: 'Interlake MF',
+                  roundNumber: 46,
+                  event: 'CX',
+                  roundTitle: 'Round 46 of Policy',
+                  startTime: '4:00 PM',
+                  room: '406A',
+                  side: 'AFF',
+                  aff: { teamCode: 'Interlake MF', names: [] },
+                  neg: { teamCode: 'Odd Format OF', names: [] },
+                  judges: [{ name: 'Fallback Judge', pronouns: null }],
+                }),
+              },
+            }],
+          }),
+        },
+      },
+    };
 
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
@@ -205,20 +529,24 @@ async function main() {
     });
     await retry('SMTP verification', () => transporter.verify());
 
-    for (const email of EMAILS) {
-      await retry(`sending ${email.subject}`, () =>
+    for (const scenario of scenarios) {
+      await retry(`sending ${scenario.key}`, () =>
         transporter.sendMail({
           from: process.env.E2E_GMAIL_EMAIL,
           to: recipient,
-          subject: email.subject,
-          text: email.body,
-          headers: { 'X-Clerk-E2E-Run': runId },
+          subject: scenario.email.subject,
+          text: scenario.email.body,
+          headers: {
+            'X-Clerk-E2E-Run': runId,
+            'X-Clerk-E2E-Scenario': scenario.key,
+          },
         }),
       );
-      console.log(`[E2E] Sent: ${email.subject}`);
+      console.log(`[E2E] Sent ${scenario.key}: ${scenario.email.subject}`);
     }
     transporter.close();
 
+    let retryDeliveries = 0;
     monitor = new EmailMonitor({
       email: process.env.E2E_GMAIL_EMAIL,
       password: process.env.E2E_GMAIL_APP_PASSWORD,
@@ -233,16 +561,30 @@ async function main() {
       if (receivedUids.has(eventData.uid)) return;
       receivedUids.add(eventData.uid);
       processing = processing
-        .then(() => bot.handlePairingEvent(eventData))
+        .then(async () => {
+          const isRetry = eventData.raw.subject === scenarios.find(s => s.key === 'failed-route').email.subject;
+          await bot.handlePairingEvent(eventData);
+          if (isRetry) {
+            retryDeliveries++;
+            if (retryDeliveries === 1) {
+              assert.strictEqual(
+                bot.store.activeSession.reportedPairings.some(key => key.includes('interlake rt')),
+                false,
+                'Failed route was incorrectly marked reported',
+              );
+              bot.store.activeSession.channelMappings['Interlake RT'] = targetChannelId;
+            }
+          }
+        })
         .catch(error => processingErrors.push(error));
     });
     monitor.on('error', error => processingErrors.push(error));
     monitor.start();
 
     await waitFor(
-      () => receivedUids.size === EMAILS.length && sentMessages.length === CASES.length,
-      180000,
-      `${EMAILS.length} Gmail messages and ${CASES.length} Discord reports`,
+      () => receivedUids.size === scenarios.length && sentMessages.length === expectedReports.length,
+      240000,
+      `${scenarios.length} Gmail messages and ${expectedReports.length} Discord reports`,
     );
     await processing;
     if (processingErrors.length) throw processingErrors[0];
@@ -251,34 +593,36 @@ async function main() {
     for (const message of sentMessages) {
       delivered.push(await targetChannel.messages.fetch(message.id));
     }
-    assert.strictEqual(delivered.length, CASES.length);
+    assert.strictEqual(delivered.length, expectedReports.length);
 
-    for (const testCase of CASES) {
-      const match = delivered.find(message => {
+    const unmatched = [...delivered];
+    for (const expected of expectedReports) {
+      const index = unmatched.findIndex(message => {
         const pairing = message.embeds[0]?.toJSON();
-        return pairing?.title === testCase.expected.title &&
-          fieldValue(pairing, 'Room') === testCase.expected.room;
+        return pairing?.title === expected.title && fieldValue(pairing, 'Room') === expected.room;
       });
-      assert(match, `${testCase.name}: no Discord message matched title/room`);
-      const embeds = match.embeds.map(embed => embed.toJSON());
-      const pairingFields = embeds[0].fields || [];
-      assert(
-        pairingFields.some(field => field.name.includes(testCase.expected.opponent)),
-        `${testCase.name}: pairing embed did not identify opponent ${testCase.expected.opponent}`,
-      );
-      for (const judge of testCase.expected.judges) {
-        assert(
-          embeds.some(embed => embed.title === `⚖️ ${judge}`),
-          `${testCase.name}: missing judge embed for ${judge}`,
-        );
-      }
-      console.log(`[E2E] Verified Discord output: ${testCase.name}`);
+      assert(index >= 0, `${expected.title}/${expected.room}: no Discord report matched`);
+      const [message] = unmatched.splice(index, 1);
+      assertReport(message, expected);
+      console.log(`[E2E] Verified Discord output: ${expected.title}/${expected.room}`);
     }
 
-    console.log(`[E2E] PASS: ${EMAILS.length} emails produced ${CASES.length} verified Discord reports`);
+    assert(!serviceCalls.caselist.includes('Cache Academy CH'), 'Opponent cache hit called live service');
+    assert(!serviceCalls.caselist.includes('No Data ND'), 'Cached opponent miss called live service');
+    assert(serviceCalls.caselist.includes('Live Academy Alice Alpha & Bob Beta'));
+    assert(serviceCalls.caselist.includes('Coppell PK'));
+    assert(!serviceCalls.paradigm.includes('Cached Judge'), 'Paradigm cache hit called live service');
+    assert(!serviceCalls.paradigm.includes('Missing Judge'), 'Cached paradigm miss called live service');
+    assert(serviceCalls.paradigm.includes('Live Fallback Judge'));
+    assert(serviceCalls.paradigm.includes('Tom Mickelson'));
+
+    console.log(
+      `[E2E] PASS: ${scenarios.length} emails exercised ${expectedReports.length} reports across all matrix branches`,
+    );
   } finally {
     if (monitor) monitor.stop();
     if (bot) bot.client.destroy();
+    fs.rmSync(cacheDir, { recursive: true, force: true });
   }
 }
 

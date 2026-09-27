@@ -426,7 +426,22 @@ The test suite includes **215 tests** across 10 files, and runs automatically in
 
 #### Live email-to-Discord smoke test
 
-Every push to `master` also runs `npm run test:live` after the ordinary tests pass. It sends four real emails through Gmail (short codes, full-name codes, multi-team assignments, and FLIP), retrieves only those messages through IMAP, runs the real pairing pipeline, posts five reports to Discord channel `1492506305842249728`, then fetches the messages back and verifies the round, room, opponent, and judge embeds.
+Every push to `master` also runs `npm run test:live` after the ordinary tests pass. It sends 10 real emails through Gmail, retrieves only those messages through IMAP, runs the production pairing pipeline, posts 9 expected reports to Discord channel `1492506305842249728`, then fetches the messages back and validates the complete embeds.
+
+The matrix covers:
+
+- Short-code and full-name team formats
+- AFF, NEG, and FLIP sides
+- Single and multiple judges
+- Single live updates and multi-team assignments
+- Exact, whitespace/case-normalized, and initials-based channel routing
+- Opponent/paradigm cache hits, cached misses, and live fallbacks
+- Paradigm and Notion-data found/missing states
+- Duplicate suppression and failed-route retry behavior
+- Malformed email recovery through the parser fallback
+- A live external contract using `Coppell PK` (2026 OpenCaselist) and `Tom Mickelson` (Tabroom paradigm + Notion comments)
+
+Deterministic fixtures exercise every application branch. The external contract uses non-snapshot assertions: it requires valid current OpenCaselist/Tabroom links and non-empty Notion comments without pinning changing report text.
 
 Add these GitHub Actions repository secrets before enabling the job:
 
@@ -435,6 +450,10 @@ Add these GitHub Actions repository secrets before enabling the job:
 | `E2E_GMAIL_EMAIL` | Clerk Kent Gmail address |
 | `E2E_GMAIL_APP_PASSWORD` | Gmail App Password used for SMTP and IMAP |
 | `E2E_DISCORD_TOKEN` | Clerk Kent Discord bot token |
+| `E2E_TABROOM_EMAIL` | Tabroom/OpenCaselist login email |
+| `E2E_TABROOM_PASSWORD` | Tabroom/OpenCaselist login password |
+| `E2E_NOTION_TOKEN` | Notion integration token |
+| `E2E_JUDGE_DATABASE_ID` | Notion judge database ID |
 
 The workflow uses a unique Gmail plus-address per run and does not mark the test messages read, so it does not consume ordinary tournament emails. The live test does not require an active tournament session or persistent volume.
 
