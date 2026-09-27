@@ -11,6 +11,14 @@ on:
         description: Subject substring
         required: true
         default: Round 5 CX
+      tourn_id:
+        description: Tournament ID whose judge category should be resolved
+        required: true
+        default: '40918'
+      event_id:
+        description: Entries event ID whose label should select the judge category
+        required: true
+        default: '389097'
 
 jobs:
   replay:
@@ -43,3 +51,5 @@ jobs:
           E2E_JUDGE_DATABASE_ID: ${{ secrets.E2E_JUDGE_DATABASE_ID }}
           REPLAY_FROM: ${{ inputs.sender }}
           REPLAY_SUBJECT: ${{ inputs.subject }}
+          REPLAY_TOURN_ID: ${{ inputs.tourn_id }}
+          REPLAY_EVENT_ID: ${{ inputs.event_id }}

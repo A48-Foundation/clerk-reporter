@@ -32,6 +32,8 @@ for (const name of required) {
 
 const sender = process.env.REPLAY_FROM || 'midamericacup_1790512207@www.tabroom.com';
 const subject = process.env.REPLAY_SUBJECT || 'Round 5 CX';
+const resolverTournId = process.env.REPLAY_TOURN_ID || '40918';
+const resolverEventId = process.env.REPLAY_EVENT_ID || '389097';
 const expectedRoundFiveParadigms = new Map([
   ['Hunter Harwood', '10849'],
   ['Tyler Zabolio', '229681'],
@@ -56,12 +58,14 @@ async function main() {
     const targetChannel = await bot.client.channels.fetch(targetChannelId);
     assert(targetChannel?.isTextBased(), `Discord channel ${targetChannelId} is not text-based`);
 
-    const judgesUrl = await TabroomScraper.findJudgesUrl('40918', '389097');
+    const judgesUrl = await TabroomScraper.findJudgesUrl(resolverTournId, resolverEventId);
     assert(
       judgesUrl?.includes('judges.mhtml') && judgesUrl.includes('category_id='),
-      `Could not resolve the Mid America Cup selected-event judges page: ${judgesUrl}`,
+      `Could not resolve judges for tourn_id=${resolverTournId}, event_id=${resolverEventId}: ${judgesUrl}`,
     );
-    console.log(`[REPLAY] Resolved selected-event judges page: ${judgesUrl}`);
+    console.log(
+      `[REPLAY] Resolved judges for tourn_id=${resolverTournId}, event_id=${resolverEventId}: ${judgesUrl}`,
+    );
 
     const originalSend = targetChannel.send.bind(targetChannel);
     targetChannel.send = async payload => {
