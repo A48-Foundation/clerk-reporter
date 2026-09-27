@@ -46,4 +46,16 @@ describe('TabroomScraper.findJudgesUrl', () => {
     expect(url).toContain('category_id=20');
     fetchPage.mockRestore();
   });
+
+  test('recognizes CX from ancestor text around an unlabeled List link', async () => {
+    const fetchPage = jest.spyOn(TabroomScraper, 'authenticatedFetch').mockResolvedValue(`
+      <div><div>LD <span><a href="/index/tourn/judges.mhtml?category_id=10&tourn_id=99">List</a></span></div></div>
+      <div><div>CX <span><a href="/index/tourn/judges.mhtml?category_id=20&tourn_id=99">List</a></span></div></div>
+    `);
+
+    const url = await TabroomScraper.findJudgesUrl('99', '123');
+
+    expect(url).toContain('category_id=20');
+    fetchPage.mockRestore();
+  });
 });

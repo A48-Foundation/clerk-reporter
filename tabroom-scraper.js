@@ -391,9 +391,13 @@ class TabroomScraper {
       $('a[href*="judges.mhtml"]').each((_, el) => {
         const href = $(el).attr('href') || '';
         if (!href) return;
+        const structuredAncestor = $(el).closest('li, tr').first();
+        const nearbyContext = structuredAncestor.length
+          ? structuredAncestor.text()
+          : $(el).parent().parent().text();
         const context = [
           $(el).text(),
-          $(el).closest('li, tr').first().text(),
+          nearbyContext,
         ].join(' ').replace(/\s+/g, ' ').trim();
         addCandidate(href, context);
       });
