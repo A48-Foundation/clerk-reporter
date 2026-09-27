@@ -374,28 +374,58 @@ class TabroomScraper {
     }
 
     const candidates = new Map();
-    for (const page of pages) {
-      const html = await this.authenticatedFetch(page);
+    const addCandidate = (rawUrl, context) => {
+      try {
+        const url = new URL(String(rawUrl).replace(/&amp;/g, '&'), BASE_URL);
+        if (!url.searchParams.get('tourn_id')) url.searchParams.set('tourn_id', tournId);
+        const score = (/\b(policy|cx)\b/i.test(context) ? 10 : 0) +
+          (url.searchParams.get('category_id') ? 2 : 0);
+        const existing = candidates.get(url.toString());
+        if (!existing || score > existing.score) {
+          candidates.set(url.toString(), { url: url.toString(), score });
+        }
+      } catch (_) { /* skip malformed navigation links */ }
+    };
+    const collectCandidates = (html, pageUrl) => {
       const $ = cheerio.load(html);
       $('a[href*="judges.mhtml"]').each((_, el) => {
-        const href = ($(el).attr('href') || '').replace(/&amp;/g, '&');
+        const href = $(el).attr('href') || '';
         if (!href) return;
-        try {
-          const url = new URL(href, BASE_URL);
-          if (!url.searchParams.get('tourn_id')) url.searchParams.set('tourn_id', tournId);
-          const context = [
-            $(el).text(),
-            $(el).closest('li, tr').first().text(),
-          ].join(' ').replace(/\s+/g, ' ').trim();
-          const score = (/\b(policy|cx)\b/i.test(context) ? 10 : 0) +
-            (url.searchParams.get('category_id') ? 2 : 0);
-          const existing = candidates.get(url.toString());
-          if (!existing || score > existing.score) {
-            candidates.set(url.toString(), { url: url.toString(), score });
-          }
-        } catch (_) { /* skip malformed navigation links */ }
+        const context = [
+          $(el).text(),
+          $(el).closest('li, tr').first().text(),
+        ].join(' ').replace(/\s+/g, ' ').trim();
+        addCandidate(href, context);
       });
+      $('select[name*="category"] option, option[value*="category_id"]').each((_, option) => {
+        const value = $(option).attr('value') || '';
+        const context = $(option).text().replace(/\s+/g, ' ').trim();
+        if (!value) return;
+        if (/^\d+$/.test(value)) {
+          const url = new URL(pageUrl);
+          url.searchParams.set('tourn_id', tournId);
+          url.searchParams.set('category_id', value);
+          addCandidate(url.toString(), context);
+        } else if (/category_id=/.test(value)) {
+          addCandidate(value, context);
+        }
+      });
+    };
+
+    for (const page of pages) {
+      const html = await this.authenticatedFetch(page);
+      collectCandidates(html, page);
       if ([...candidates.values()].some(candidate => candidate.score >= 12)) break;
+    }
+
+    if (![...candidates.values()].some(candidate => candidate.score >= 12)) {
+      const categoryIndexes = [...candidates.values()]
+        .filter(candidate => !new URL(candidate.url).searchParams.get('category_id'));
+      for (const candidate of categoryIndexes) {
+        const html = await this.authenticatedFetch(candidate.url);
+        collectCandidates(html, candidate.url);
+        if ([...candidates.values()].some(item => item.score >= 12)) break;
+      }
     }
 
     const ranked = [...candidates.values()].sort((a, b) => b.score - a.score);
