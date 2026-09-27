@@ -31,6 +31,11 @@ for (const name of required) {
 
 const sender = process.env.REPLAY_FROM || 'midamericacup_1790512207@www.tabroom.com';
 const subject = process.env.REPLAY_SUBJECT || 'Round 5 CX';
+const expectedRoundFiveParadigms = new Map([
+  ['Hunter Harwood', '10849'],
+  ['Tyler Zabolio', '229681'],
+  ['Stephen Pipkin', '8501'],
+]);
 
 async function main() {
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clerk-real-replay-'));
@@ -118,6 +123,7 @@ async function main() {
       'Each matching real email must produce exactly one Discord report',
     );
 
+    const foundParadigms = new Map();
     for (const message of sentMessages) {
       const delivered = await targetChannel.messages.fetch({ message: message.id, force: true });
       const embeds = delivered.embeds.map(embed => embed.toJSON());
@@ -135,7 +141,24 @@ async function main() {
         embeds.slice(1).some(embed => embed.title?.startsWith('⚖️ ')),
         `${pairing.title}: missing judge embed`,
       );
+      for (const judgeEmbed of embeds.slice(1).filter(embed => embed.title?.startsWith('⚖️ '))) {
+        const judgeName = judgeEmbed.title.slice('⚖️ '.length);
+        const paradigmLink = (judgeEmbed.fields || [])
+          .find(field => field.name === 'Paradigm Link')?.value;
+        foundParadigms.set(judgeName, paradigmLink);
+      }
       console.log(`[REPLAY] Verified ${pairing.title}: room=${room}, start=${start}`);
+    }
+
+    if (sender === 'midamericacup_1790512207@www.tabroom.com' && subject === 'Round 5 CX') {
+      for (const [judgeName, personId] of expectedRoundFiveParadigms) {
+        const link = foundParadigms.get(judgeName);
+        assert(
+          link?.includes(`judge_person_id=${personId}`),
+          `${judgeName}: expected Tabroom paradigm ${personId}, received ${link || 'no judge embed'}`,
+        );
+        console.log(`[REPLAY] Verified paradigm link for ${judgeName}: judge_person_id=${personId}`);
+      }
     }
 
     console.log(
