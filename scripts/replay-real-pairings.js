@@ -74,8 +74,13 @@ async function main() {
         text: $(link).text().replace(/\s+/g, ' ').trim(),
         href: $(link).attr('href') || null,
         context: $(link).closest('tr, li').first().text().replace(/\s+/g, ' ').trim(),
+        row: $(link).closest('.row').first().text().replace(/\s+/g, ' ').trim(),
+        parent: $(link).parent().text().replace(/\s+/g, ' ').trim(),
+        grandparent: $(link).parent().parent().text().replace(/\s+/g, ' ').trim(),
       })).get().filter(link =>
-        /judge|policy|cx|category/i.test(`${link.text} ${link.href} ${link.context}`),
+        /judge|policy|cx|category/i.test(
+          `${link.text} ${link.href} ${link.context} ${link.row} ${link.parent} ${link.grandparent}`,
+        ),
       );
       console.log('[REPLAY] Judge navigation diagnostics:', JSON.stringify({
         title: $('title').text().trim(),
