@@ -73,8 +73,9 @@ async function main() {
       const links = $('a').map((_, link) => ({
         text: $(link).text().replace(/\s+/g, ' ').trim(),
         href: $(link).attr('href') || null,
+        context: $(link).closest('tr, li').first().text().replace(/\s+/g, ' ').trim(),
       })).get().filter(link =>
-        /judge|policy|cx|category/i.test(`${link.text} ${link.href}`),
+        /judge|policy|cx|category/i.test(`${link.text} ${link.href} ${link.context}`),
       );
       console.log('[REPLAY] Judge navigation diagnostics:', JSON.stringify({
         title: $('title').text().trim(),
