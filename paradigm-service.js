@@ -249,6 +249,12 @@ class ParadigmService {
    * Returns the first matching paradigm or null.
    */
   async fetchParadigmByName(fullName) {
+    const inline = String(fullName || '').trim().match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+    if (inline && (/^[a-z]+\/[a-z]+$/i.test(inline[2].trim()) ||
+        /^(he|she|they|ze|xe)\b/i.test(inline[2].trim()))) {
+      fullName = inline[1].trim();
+    }
+
     let firstName, lastName;
 
     if (fullName.includes(',')) {

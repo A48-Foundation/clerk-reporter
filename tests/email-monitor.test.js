@@ -137,6 +137,6 @@ describe('EmailMonitor test isolation options', () => {
     expect(pairing.side).toBe('NEG');
     expect(pairing.aff.teamCode).toBe('Eagan Skye Hoover & Madeline Risk');
     expect(pairing.neg.teamCode).toBe('Interlake Shreshth Seth & Aanya Chetan');
-    expect(pairing.judges).toEqual([{ name: 'Hunter Harwood (He/Him)', pronouns: null }]);
+    expect(pairing.judges).toEqual([{ name: 'Hunter Harwood', pronouns: 'He/Him' }]);
   });
 });

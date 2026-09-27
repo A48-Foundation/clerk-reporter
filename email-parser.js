@@ -174,7 +174,7 @@ class EmailParser {
           currentJudge = null;
         } else {
           flushJudge(result, currentJudge);
-          currentJudge = { name: trimmed, pronouns: null };
+          currentJudge = parseJudgeLine(trimmed);
         }
       }
     }
@@ -265,7 +265,7 @@ class EmailParser {
             .split(/,\s*/)
             .map(n => n.trim())
             .filter(Boolean)
-            .map(name => ({ name, pronouns: null }));
+            .map(parseJudgeLine);
           if (judgeRoomMatch[2]) {
             currentEntry.room = judgeRoomMatch[2].trim();
           }
@@ -460,6 +460,15 @@ function looksLikeNameLine(line) {
  */
 function isPronounLine(trimmed) {
   return /^[a-z]+\/[a-z]+$/i.test(trimmed) || /^(he|she|they|ze|xe)\b/i.test(trimmed);
+}
+
+function parseJudgeLine(line) {
+  const trimmed = String(line || '').trim();
+  const inline = trimmed.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (inline && isPronounLine(inline[2].trim())) {
+    return { name: inline[1].trim(), pronouns: inline[2].trim() };
+  }
+  return { name: trimmed, pronouns: null };
 }
 
 function parseNames(line) {

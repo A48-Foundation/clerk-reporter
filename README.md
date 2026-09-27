@@ -410,7 +410,7 @@ npm start
 npm test
 ```
 
-The test suite includes **215 tests** across 10 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **217 tests** across 11 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
@@ -424,6 +424,7 @@ The test suite includes **215 tests** across 10 files, and runs automatically in
 | `pairing-flow.test.js` | 10 | **End-to-end**: parse → route → send, partial deterministic routing, subject identity, retriable failures, monitor restore |
 | `tournament-cache.test.js` | 8 | Name normalization, opponent/paradigm priming, miss vs cached-empty semantics |
 | `email-monitor.test.js` | 5 | MIME body selection, awaited delivery-before-seen, isolated E2E search, and E2E-message rejection |
+| `paradigm-service.test.js` | 2 | Inline-pronoun normalization before Tabroom paradigm search |
 
 #### Live email-to-Discord smoke test
 
