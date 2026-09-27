@@ -409,7 +409,7 @@ npm start
 npm test
 ```
 
-The test suite includes **215 tests** across 10 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **216 tests** across 10 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
@@ -422,7 +422,7 @@ The test suite includes **215 tests** across 10 files, and runs automatically in
 | `bot-routing.test.js` | 9 | `_resolveChannelId` tolerant channel resolution (exact / normalized / suffix) |
 | `pairing-flow.test.js` | 8 | **End-to-end**: parse → route → send, dedup-after-send, retriable failures, monitor restore |
 | `tournament-cache.test.js` | 8 | Name normalization, opponent/paradigm priming, miss vs cached-empty semantics |
-| `email-monitor.test.js` | 2 | Production defaults and isolated live-test IMAP search behavior |
+| `email-monitor.test.js` | 3 | Production defaults, isolated live-test IMAP search, and E2E-message rejection |
 
 #### Live email-to-Discord smoke test
 
@@ -455,7 +455,7 @@ Add these GitHub Actions repository secrets before enabling the job:
 | `E2E_NOTION_TOKEN` | Notion integration token |
 | `E2E_JUDGE_DATABASE_ID` | Notion judge database ID |
 
-The workflow uses a unique Gmail plus-address per run and does not mark the test messages read, so it does not consume ordinary tournament emails. The live test does not require an active tournament session or persistent volume.
+The workflow uses a unique Gmail plus-address and `X-Clerk-E2E-Run` header per run. The dedicated E2E monitor explicitly accepts that header; normal production monitors reject and mark those messages handled before pairing parsing, so test reports cannot enter real tournament channels. The live test does not require an active tournament session or persistent volume.
 
 ### Key Implementation Details
 

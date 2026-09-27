@@ -21,6 +21,7 @@ class EmailMonitor extends EventEmitter {
       ['OR', ['FROM', '@www.tabroom.com'], ['SUBJECT', '[TAB]']],
     ];
     this.markSeen = options.markSeen !== false;
+    this.allowE2E = options.allowE2E === true;
     this.fastInterval = options.pollInterval || FAST_INTERVAL;
     this._pollTimer = null;
     this._resumeTimer = null;
@@ -237,6 +238,15 @@ class EmailMonitor extends EventEmitter {
       try {
         const raw = await this._fetchMessage(uid);
         const parsed = await simpleParser(raw);
+        const e2eRun = parsed.headers.get('x-clerk-e2e-run');
+
+        // Live smoke tests share the production inbox but must never enter the
+        // real pairing pipeline. Only the dedicated E2E monitor opts in.
+        if (e2eRun && !this.allowE2E) {
+          console.log(`[EmailMonitor] Email UID ${uid} skipped — E2E test message`);
+          if (this.markSeen) await this._markSeen(uid);
+          continue;
+        }
 
         const emailData = {
           subject: parsed.subject || '',

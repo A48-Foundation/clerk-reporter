@@ -553,6 +553,7 @@ async function main() {
       password: process.env.E2E_GMAIL_APP_PASSWORD,
       searchCriteria: [['TO', recipient]],
       markSeen: false,
+      allowE2E: true,
       pollInterval: 3000,
       maxReconnectDelay: 10000,
     });

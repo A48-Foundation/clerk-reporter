@@ -45,6 +45,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Wait for production deploy
+        run: sleep 90
+
       - name: Send emails and verify Discord reports
         run: npm run test:live
         env:
