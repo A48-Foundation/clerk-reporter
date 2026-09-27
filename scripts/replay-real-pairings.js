@@ -1,5 +1,4 @@
 const assert = require('assert');
-const cheerio = require('cheerio');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -60,35 +59,6 @@ async function main() {
     assert(targetChannel?.isTextBased(), `Discord channel ${targetChannelId} is not text-based`);
 
     const judgesUrl = await TabroomScraper.findJudgesUrl(resolverTournId, resolverEventId);
-    if (!judgesUrl) {
-      const entriesUrl = `https://www.tabroom.com/index/tourn/fields.mhtml?tourn_id=${resolverTournId}&event_id=${resolverEventId}`;
-      const judgesIndexUrl = `https://www.tabroom.com/index/tourn/judges.mhtml?tourn_id=${resolverTournId}`;
-      const [entriesHtml, judgesHtml] = await Promise.all([
-        TabroomScraper.authenticatedFetch(entriesUrl),
-        TabroomScraper.authenticatedFetch(judgesIndexUrl),
-      ]);
-      const entriesPage = cheerio.load(entriesHtml);
-      const judgesPage = cheerio.load(judgesHtml);
-      const eventLabels = entriesPage('a[href*="event_id"], option').map((_, element) => ({
-        text: entriesPage(element).text().replace(/\s+/g, ' ').trim(),
-        value: entriesPage(element).attr('href') || entriesPage(element).attr('value') || null,
-        selected: entriesPage(element).is('[selected]'),
-      })).get().filter(item =>
-        item.selected || String(item.value).includes(`event_id=${resolverEventId}`) ||
-        String(item.value) === String(resolverEventId),
-      );
-      const categories = judgesPage('a[href*="category_id"]').map((_, link) => ({
-        text: judgesPage(link).text().replace(/\s+/g, ' ').trim(),
-        href: judgesPage(link).attr('href') || null,
-        context: judgesPage(link).parent().parent().text().replace(/\s+/g, ' ').trim(),
-      })).get();
-      console.log('[REPLAY] Resolver labels:', JSON.stringify({
-        entriesHeadings: entriesPage('h1, h2, h3, h4').map((_, heading) =>
-          entriesPage(heading).text().replace(/\s+/g, ' ').trim()).get(),
-        eventLabels,
-        categories,
-      }));
-    }
     assert(
       judgesUrl?.includes('judges.mhtml') && judgesUrl.includes('category_id='),
       `Could not resolve judges for tourn_id=${resolverTournId}, event_id=${resolverEventId}: ${judgesUrl}`,

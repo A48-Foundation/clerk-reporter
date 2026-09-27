@@ -77,4 +77,20 @@ describe('TabroomScraper.findJudgesUrl', () => {
     expect(url).toContain('category_id=20');
     fetchPage.mockRestore();
   });
+
+  test('matches Pelham Debate to the abbreviated PEL judge category', async () => {
+    const fetchPage = jest.spyOn(TabroomScraper, 'authenticatedFetch')
+      .mockResolvedValueOnce(`
+        <a href="/index/tourn/fields.mhtml?tourn_id=39754&event_id=379142">Pelham Debate</a>
+      `)
+      .mockResolvedValueOnce(`
+        <div><div>LD <span><a href="/index/tourn/judges.mhtml?category_id=106352&tourn_id=39754">List</a></span></div></div>
+        <div><div>PEL <span><a href="/index/tourn/judges.mhtml?category_id=106351&tourn_id=39754">List</a></span></div></div>
+      `);
+
+    const url = await TabroomScraper.findJudgesUrl('39754', '379142');
+
+    expect(url).toContain('category_id=106351');
+    fetchPage.mockRestore();
+  });
 });

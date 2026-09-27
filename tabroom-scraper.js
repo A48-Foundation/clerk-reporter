@@ -382,13 +382,28 @@ class TabroomScraper {
       .replace(/\bdebate\b/g, '')
       .replace(/[^a-z0-9]+/g, ' ')
       .trim();
+    const addEventLabel = (value) => {
+      const normalized = normalizeLabel(value);
+      if (normalized) {
+        eventLabels.add(normalized);
+        for (const token of normalized.split(/\s+/)) {
+          if (token.length >= 4) eventLabels.add(token.slice(0, 3));
+        }
+      }
+      const rawTokens = String(value || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+      if (rawTokens.length > 1) {
+        eventLabels.add(rawTokens.map(token => token[0]).join(''));
+      }
+    };
     const eventMatchScore = (context) => {
       const normalizedContext = normalizeLabel(context);
       if (!normalizedContext) return 0;
       const contextTokens = new Set(normalizedContext.split(/\s+/));
       let best = 0;
       for (const label of eventLabels) {
-        if (normalizedContext.includes(label) || label.includes(normalizedContext)) {
+        const shortLabelMatch = label.length <= 3 && contextTokens.has(label);
+        if (shortLabelMatch ||
+            (label.length > 3 && (normalizedContext.includes(label) || label.includes(normalizedContext)))) {
           best = Math.max(best, 20);
           continue;
         }
@@ -428,8 +443,7 @@ class TabroomScraper {
             } catch (_) { /* ignore malformed event links */ }
           }
           if (linkedEventId !== String(eventId) && !$(element).is('[selected]')) return;
-          const label = normalizeLabel($(element).text());
-          if (label) eventLabels.add(label);
+          addEventLabel($(element).text());
         });
       }
       $('a[href*="judges.mhtml"]').each((_, el) => {
