@@ -222,15 +222,8 @@ const scenarios = [
     }],
   },
   {
-    key: 'malformed-llm-fallback',
+    key: 'malformed-rejected',
     email: malformedEmail,
-    reports: [{
-      title: '📋 R46',
-      room: '406A',
-      opponent: 'Odd Format OF',
-      caselist: true,
-      judges: [{ name: 'Fallback Judge', paradigm: true, comments: false }],
-    }],
   },
   {
     key: 'failed-route',
@@ -488,33 +481,6 @@ async function main() {
       return [];
     };
 
-    bot.llmService.enabled = true;
-    bot.llmService._client = {
-      chat: {
-        completions: {
-          create: async () => ({
-            choices: [{
-              message: {
-                content: JSON.stringify({
-                  format: 'liveUpdate',
-                  teamCode: 'Interlake MF',
-                  roundNumber: 46,
-                  event: 'CX',
-                  roundTitle: 'Round 46 of Policy',
-                  startTime: '4:00 PM',
-                  room: '406A',
-                  side: 'AFF',
-                  aff: { teamCode: 'Interlake MF', names: [] },
-                  neg: { teamCode: 'Odd Format OF', names: [] },
-                  judges: [{ name: 'Fallback Judge', pronouns: null }],
-                }),
-              },
-            }],
-          }),
-        },
-      },
-    };
-
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 587,
@@ -565,24 +531,33 @@ async function main() {
       processing = processing
         .then(async () => {
           const isRetry = eventData.raw.subject === scenarios.find(s => s.key === 'failed-route').email.subject;
+          const isMalformed = eventData.raw.subject === malformedEmail.subject;
           if (isRetry) retryDeliveries++;
           try {
             await bot.handlePairingEvent(eventData);
           } catch (error) {
-            if (!(isRetry && retryDeliveries === 1)) throw error;
+            const expectedFailure = isMalformed || (isRetry && retryDeliveries === 1);
+            if (!expectedFailure) throw error;
           }
           if (isRetry && retryDeliveries === 1) {
-              assert.strictEqual(
-                bot.store.activeSession.reportedPairings.some(key => key.includes('interlake rt')),
-                false,
-                'Failed route was incorrectly marked reported',
-              );
-              assert.strictEqual(
-                bot.store.activeSession.processedEmailUids.includes(eventData.uid),
-                false,
-                'Failed route was incorrectly marked processed',
-              );
-              bot.store.activeSession.channelMappings['Interlake RT'] = targetChannelId;
+            assert.strictEqual(
+              bot.store.activeSession.reportedPairings.some(key => key.includes('interlake rt')),
+              false,
+              'Failed route was incorrectly marked reported',
+            );
+            assert.strictEqual(
+              bot.store.activeSession.processedEmailUids.includes(eventData.uid),
+              false,
+              'Failed route was incorrectly marked processed',
+            );
+            bot.store.activeSession.channelMappings['Interlake RT'] = targetChannelId;
+          }
+          if (isMalformed) {
+            assert.strictEqual(
+              bot.store.activeSession.processedEmailUids.includes(eventData.uid),
+              false,
+              'Malformed email was incorrectly marked processed',
+            );
           }
         })
         .catch(error => processingErrors.push(error));

@@ -90,4 +90,53 @@ describe('EmailMonitor test isolation options', () => {
 
     expect(order).toEqual(['delivered', 'seen']);
   });
+
+  test('prefers a complete HTML MIME body over a degraded plain-text body', async () => {
+    const monitor = new EmailMonitor({
+      email: 'x@example.com',
+      password: 'secret',
+      markSeen: false,
+    });
+    monitor._search = jest.fn().mockResolvedValue([103]);
+    monitor._fetchMessage = jest.fn().mockResolvedValue([
+      'From: Mid America Cup <x@www.tabroom.com>',
+      'To: x@example.com',
+      'Subject: [TAB] Interlake Shreshth Seth & Aanya Chetan Round 5 CX',
+      'MIME-Version: 1.0',
+      'Content-Type: multipart/alternative; boundary="test-boundary"',
+      '',
+      '--test-boundary',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      'Round 5 of CX',
+      'Room: NSDA Campus Section 28',
+      'Judging',
+      'Hunter Harwood Hunter Harwood (He/Him)',
+      '--test-boundary',
+      'Content-Type: text/html; charset=utf-8',
+      '',
+      '<p>Round 5 of Policy</p>',
+      '<p>Start: 8:00 CDT</p>',
+      '<p>Room: NSDA Campus Section 28</p>',
+      '<p>Side: NEG</p>',
+      '<p>Competitors</p>',
+      '<p>AFF Eagan Skye Hoover &amp; Madeline Risk</p>',
+      '<p>NEG Interlake Shreshth Seth &amp; Aanya Chetan</p>',
+      '<p>Judging</p>',
+      '<p>Hunter Harwood (He/Him)</p>',
+      '--test-boundary--',
+    ].join('\r\n'));
+    let pairing;
+    monitor.on('pairing', async eventData => {
+      pairing = eventData.parsed;
+    });
+
+    await monitor.poll();
+
+    expect(pairing.startTime).toBe('8:00 CDT');
+    expect(pairing.side).toBe('NEG');
+    expect(pairing.aff.teamCode).toBe('Eagan Skye Hoover & Madeline Risk');
+    expect(pairing.neg.teamCode).toBe('Interlake Shreshth Seth & Aanya Chetan');
+    expect(pairing.judges).toEqual([{ name: 'Hunter Harwood (He/Him)', pronouns: null }]);
+  });
 });

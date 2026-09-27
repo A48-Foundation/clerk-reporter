@@ -252,20 +252,21 @@ index.js                  Entry point — env validation, crash guards, graceful
 ```
 Tabroom emails → Gmail IMAP
                      │
-            EmailMonitor polls every 30s
+            EmailMonitor polls every 15s
+                     │
+            Reject E2E-tagged mail
+                     │
+      Select richer plain-text / HTML MIME body
                      │
             isPairingEmail() filter
                      │
-     ┌───── Regex parse (Format A / B) ─────┐
-     │                                       │
-  Complete?                           Incomplete?
-     │                                       │
-     │                              LLM fallback parse
-     │                                       │
-     └───────────────┬───────────────────────┘
+        Deterministic parse (Format A / B)
                      │
-          Validate: opponent + team + judge + startTime
-          (skip if any missing)
+        Complete ───────────── Partial but usable
+           │                          │
+           └──────── route by subject identity
+                     │
+           Await Discord delivery, then mark seen
                      │
           handlePairingEvent()
                      │
@@ -409,24 +410,24 @@ npm start
 npm test
 ```
 
-The test suite includes **219 tests** across 10 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **215 tests** across 10 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
-| `email-parser.test.js` | 68 | Subject/body parsing, pairing detection, bounded LLM fallback, validation |
+| `email-parser.test.js` | 62 | Deterministic subject/body parsing, pairing detection, and validation |
 | `caselist-service.test.js` | 39 | Team code parsing (short codes + full names), school lookup, wiki URL, entry name matching |
 | `tournament-store.test.js` | 33 | Load/save, team tracking, session management, email UID tracking, settings |
 | `channel-mapper.test.js` | 19 | Team suffix/candidate extraction, channel lookup, auto-mapping |
-| `llm-service.test.js` | 17 | Frequency analysis, inline doc links, paradigm truncation, LLM fallback |
+| `llm-service.test.js` | 17 | Frequency analysis, inline doc links, paradigm truncation, and summary fallback |
 | `report-builder.test.js` | 13 | Embed construction, doc link fields, truncation, embed cap |
 | `bot-routing.test.js` | 9 | `_resolveChannelId` tolerant channel resolution (exact / normalized / suffix) |
-| `pairing-flow.test.js` | 9 | **End-to-end**: parse → route → send, subject-anchored routing, dedup-after-send, retriable failures, monitor restore |
+| `pairing-flow.test.js` | 10 | **End-to-end**: parse → route → send, partial deterministic routing, subject identity, retriable failures, monitor restore |
 | `tournament-cache.test.js` | 8 | Name normalization, opponent/paradigm priming, miss vs cached-empty semantics |
-| `email-monitor.test.js` | 4 | Production defaults, awaited delivery-before-seen, isolated E2E search, and E2E-message rejection |
+| `email-monitor.test.js` | 5 | MIME body selection, awaited delivery-before-seen, isolated E2E search, and E2E-message rejection |
 
 #### Live email-to-Discord smoke test
 
-Every push to `master` also runs `npm run test:live` after the ordinary tests pass. It sends 10 real emails through Gmail, retrieves only those messages through IMAP, runs the production pairing pipeline, posts 9 expected reports to Discord channel `1492506305842249728`, then fetches the messages back and validates the complete embeds.
+Every push to `master` also runs `npm run test:live` after the ordinary tests pass. It sends 10 real emails through Gmail, retrieves only those messages through IMAP, runs the production pairing pipeline, posts 8 expected reports to Discord channel `1492506305842249728`, then fetches the messages back and validates the complete embeds.
 
 The matrix covers:
 
@@ -438,7 +439,7 @@ The matrix covers:
 - Opponent/paradigm cache hits, cached misses, and live fallbacks
 - Paradigm and Notion-data found/missing states
 - Duplicate suppression and failed-route retry behavior
-- Malformed email recovery through the parser fallback
+- Malformed email rejection without consuming the message
 - A live external contract using `Coppell PK` (2026 OpenCaselist) and `Tom Mickelson` (Tabroom paradigm + Notion comments)
 
 Deterministic fixtures exercise every application branch. The external contract uses non-snapshot assertions: it requires valid current OpenCaselist/Tabroom links and non-empty Notion comments without pinning changing report text.
@@ -463,8 +464,9 @@ The workflow uses a unique Gmail plus-address and `X-Clerk-E2E-Run` header per r
 - Format A ("Live Update"): subject `[TAB] Team Round N Event`, body has `Competitors` and `Judging` sections
 - Format B ("Round Assignments"): subject `[TAB] School Round Assignments`, body has `ENTRIES` section with indented data blocks
 - `isPairingEmail()` uses a signal-counting approach — checks for structural markers (Competitors, ENTRIES, Judges:, AFF/NEG, vs) and rejects logistics emails (check-in, payment, registration)
-- `parseWithFallback()` tries regex first, falls back to LLM if incomplete, validates required fields (opponent, team, judge, startTime)
-- `_isCompletePairing()` ensures all critical fields are present before generating a report
+- The monitor scores both plain-text and HTML MIME bodies and selects the structurally richer deterministic parse
+- Partial live updates route by the exact subject team identity when room/judge data is usable; malformed mail remains unread for retry
+- Pairing email parsing never invokes an LLM
 
 **Tournament setup** (`tabroom-scraper.js` + `bot.js`):
 - Authenticates with Tabroom to access entries pages

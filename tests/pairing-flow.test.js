@@ -146,6 +146,26 @@ describe('pairing pipeline — parse → route → send', () => {
     expect(fetchedIds).toContain('CH_INT');
   });
 
+  test('routes a partial deterministic parse without invoking an LLM', async () => {
+    const { bot, channel, fetchedIds } = makeBot({
+      channelMappings: { 'Interlake Shreshth Seth & Aanya Chetan': 'CH_INT' },
+    });
+    const parsed = parseRound3();
+    parsed.startTime = null;
+    parsed.side = null;
+    parsed.aff = { teamCode: null, names: [] };
+    parsed.neg = { teamCode: null, names: [] };
+    bot.llmService._client = {
+      chat: { completions: { create: jest.fn() } },
+    };
+
+    await bot.handlePairingEvent({ uid: 1, parsed });
+
+    expect(bot.llmService._client.chat.completions.create).not.toHaveBeenCalled();
+    expect(channel.send).toHaveBeenCalledTimes(1);
+    expect(fetchedIds).toContain('CH_INT');
+  });
+
   test('resolves the channel by debater-initial suffix when the mapping key differs', async () => {
     // Setup used a short code; the email uses full names.
     const { bot, channel, fetchedIds } = makeBot({

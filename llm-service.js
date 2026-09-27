@@ -1,7 +1,7 @@
 // NOTE: `openai` (~7 MB) and `./paradigm-summarizer` are intentionally NOT
 // required at module load. They're pulled in lazily on first use (see the
-// `client` / `paradigmSummarizer` getters) so an idle bot that never runs an
-// LLM call keeps them out of the heap.
+// `client` / `paradigmSummarizer` getters) so an idle bot that never requests
+// an on-demand judge summary keeps them out of the heap.
 
 class LlmService {
   constructor() {
@@ -17,8 +17,8 @@ class LlmService {
 
   /**
    * Lazily-constructed OpenAI client. Loading the SDK and building the client
-   * is deferred until the first LLM call (e.g. email-parser fallback or a
-   * `judge summary`). Returns null when no API key is configured.
+   * is deferred until the first on-demand `judge summary`. Returns null when
+   * no API key is configured.
    */
   get client() {
     if (!this.enabled) return null;

@@ -1,6 +1,7 @@
 const { EventEmitter } = require('events');
 const Imap = require('imap');
 const { simpleParser } = require('mailparser');
+const cheerio = require('cheerio');
 const EmailParser = require('./email-parser');
 
 const FAST_INTERVAL = 15 * 1000;         // 15s — waiting for pairings
@@ -248,10 +249,15 @@ class EmailMonitor extends EventEmitter {
           continue;
         }
 
-        const emailData = {
+        const baseEmailData = {
           subject: parsed.subject || '',
           from: parsed.from ? parsed.from.text : '',
-          body: parsed.text || ''
+        };
+        const textBody = parsed.text || '';
+        const htmlBody = htmlToText(parsed.html);
+        const emailData = {
+          ...baseEmailData,
+          body: chooseBestBody(baseEmailData, textBody, htmlBody),
         };
 
         console.log(`[EmailMonitor] Email UID ${uid}: subject="${emailData.subject}", from="${emailData.from}"`);
@@ -312,6 +318,55 @@ class EmailMonitor extends EventEmitter {
       });
     });
   }
+}
+
+function htmlToText(html) {
+  if (!html || typeof html !== 'string') return '';
+  const $ = cheerio.load(html);
+  $('script, style, head').remove();
+  $('br').replaceWith('\n');
+  $('p, div, li, tr, h1, h2, h3, h4, h5, h6').each((_, element) => {
+    $(element).append('\n');
+  });
+  $('td, th').each((_, element) => {
+    $(element).append(' ');
+  });
+  return $.root().text()
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function chooseBestBody(baseEmailData, textBody, htmlBody) {
+  if (!htmlBody) return textBody;
+  if (!textBody) return htmlBody;
+
+  const score = body => {
+    const parsed = EmailParser.parse({ ...baseEmailData, body });
+    if (!parsed) return 0;
+    if (parsed.format === 'assignments') {
+      return (parsed.entries || []).reduce(
+        (total, entry) => total +
+          (entry.teamCode ? 4 : 0) +
+          (entry.opponent ? 4 : 0) +
+          (entry.side ? 2 : 0) +
+          (entry.room ? 1 : 0) +
+          ((entry.judges || []).length * 2),
+        parsed.startTime ? 2 : 0,
+      );
+    }
+    return (parsed.roundTitle ? 1 : 0) +
+      (parsed.startTime ? 3 : 0) +
+      (parsed.room ? 2 : 0) +
+      (parsed.side ? 3 : 0) +
+      (parsed.aff?.teamCode ? 4 : 0) +
+      (parsed.neg?.teamCode ? 4 : 0) +
+      ((parsed.judges || []).length * 2);
+  };
+
+  return score(htmlBody) > score(textBody) ? htmlBody : textBody;
 }
 
 module.exports = EmailMonitor;

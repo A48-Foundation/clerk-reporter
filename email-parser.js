@@ -13,8 +13,6 @@
  *         ENTRIES section with team blocks (FLIP/AFF/NEG vs opponent, Judges:, Room inline)
  */
 class EmailParser {
-  static LLM_PARSE_TIMEOUT_MS = 10000;
-
   /**
    * Parse a [TAB] subject line into structured fields.
    * Format A: "[TAB] <teamCode> Round <N> <event>"
@@ -391,60 +389,6 @@ class EmailParser {
   }
 
   /**
-   * Try regex parse first; if result is incomplete (missing required fields),
-   * fall back to LLM extraction. Returns null if the email is not a valid pairing.
-   *
-   * Required fields for a valid pairing:
-   *   - At least one team code (our team or opponent)
-   *   - At least one judge
-   *   - A start time
-   *
-   * @param {{ subject?: string, from?: string, body?: string }} email
-   * @param {object} [llmService] - LlmService instance for fallback
-   * @returns {Promise<object|null>}
-   */
-  static async parseWithFallback(email, llmService) {
-    if (!email || typeof email !== 'object') return null;
-
-    // Try regex parse first
-    const regexResult = this.parse(email);
-
-    if (regexResult && this._isCompletePairing(regexResult)) {
-      return regexResult;
-    }
-
-    // Regex parse incomplete — try LLM fallback if available
-    if (llmService && llmService.enabled) {
-      let timeout;
-      try {
-        const llmResult = await Promise.race([
-          this._llmParse(email, llmService),
-          new Promise((_, reject) => {
-            timeout = setTimeout(
-              () => reject(new Error(`LLM email parse timed out after ${this.LLM_PARSE_TIMEOUT_MS}ms`)),
-              this.LLM_PARSE_TIMEOUT_MS,
-            );
-          }),
-        ]);
-        if (llmResult && this._isCompletePairing(llmResult)) {
-          return llmResult;
-        }
-      } catch (err) {
-        console.error('[EmailParser] LLM fallback failed:', err.message);
-      } finally {
-        if (timeout) clearTimeout(timeout);
-      }
-    }
-
-    // If regex had a partial result, still return it if it has SOME data
-    if (regexResult && this._hasAnyPairingData(regexResult)) {
-      return regexResult;
-    }
-
-    return null;
-  }
-
-  /**
    * Check if a parsed result has all required fields for a complete pairing.
    */
   static _isCompletePairing(parsed) {
@@ -474,89 +418,6 @@ class EmailParser {
     return !!(parsed.aff?.teamCode || parsed.neg?.teamCode || (parsed.judges || []).length > 0);
   }
 
-  /**
-   * Use the LLM to extract pairing data from an unstructured email body.
-   */
-  static async _llmParse(email, llmService) {
-    const body = (email.body || '').trim();
-    if (!body) return null;
-
-    const systemPrompt = [
-      'You are a parser for debate tournament pairing emails.',
-      'Extract the following fields from the email text and return ONLY valid JSON:',
-      '{',
-      '  "format": "liveUpdate",',
-      '  "roundTitle": "string or null",',
-      '  "startTime": "string or null",',
-      '  "room": "string or null",',
-      '  "side": "AFF" or "NEG" or "FLIP" or null,',
-      '  "aff": { "teamCode": "string or null", "names": [] },',
-      '  "neg": { "teamCode": "string or null", "names": [] },',
-      '  "judges": [{ "name": "string", "pronouns": null }]',
-      '}',
-      '',
-      'Team codes look like "School Name XX" where XX is a letter code.',
-      'If side is not specified, set it to null.',
-      'If there are multiple entries, use format "assignments" with an "entries" array.',
-      'Return ONLY the JSON object, no markdown, no explanation.',
-    ].join('\n');
-
-    const subject = email.subject || '';
-    const userContent = `Subject: ${subject}\n\nBody:\n${body}`;
-
-    const response = await llmService.client.chat.completions.create({
-      model: llmService.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
-      ],
-      temperature: 0,
-      max_tokens: 800,
-    });
-
-    const text = (response.choices[0]?.message?.content || '').trim();
-
-    // Extract JSON from the response (handle possible markdown wrapping)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-
-    try {
-      const data = JSON.parse(jsonMatch[0]);
-      // Normalize the LLM output to match our expected structure
-      if (data.format === 'assignments' && Array.isArray(data.entries)) {
-        return {
-          format: 'assignments',
-          school: data.school || null,
-          roundTitle: data.roundTitle || null,
-          startTime: data.startTime || null,
-          entries: data.entries.map(e => ({
-            teamCode: e.teamCode || null,
-            opponent: e.opponent || null,
-            side: e.side || null,
-            judges: (e.judges || []).map(j => typeof j === 'string' ? { name: j, pronouns: null } : j),
-            room: e.room || null,
-          })),
-        };
-      }
-
-      return {
-        format: 'liveUpdate',
-        teamCode: data.teamCode || null,
-        roundNumber: data.roundNumber || null,
-        event: data.event || null,
-        roundTitle: data.roundTitle || null,
-        startTime: data.startTime || null,
-        room: data.room || null,
-        side: data.side || null,
-        aff: data.aff || { teamCode: null, names: [] },
-        neg: data.neg || { teamCode: null, names: [] },
-        judges: (data.judges || []).map(j => typeof j === 'string' ? { name: j, pronouns: null } : j),
-      };
-    } catch (err) {
-      console.error('[EmailParser] LLM returned invalid JSON:', text.substring(0, 200));
-      return null;
-    }
-  }
 }
 
 // ── Private utility functions ──────────────────────────────────────────

@@ -829,7 +829,7 @@ class ClerkKentBot {
 
   /**
    * Handle an incoming pairing event from the EmailMonitor.
-   * Uses parseWithFallback (regex first, then LLM) and validates required fields.
+   * Uses deterministic parsing only and validates that some routing/report data exists.
    * Routes each team's pairing to _processSinglePairing().
    */
   async handlePairingEvent(eventData) {
@@ -869,15 +869,12 @@ class ClerkKentBot {
         }
       }
 
-      // If the initial regex parse was incomplete, try LLM fallback
-      if (!parsed || !EmailParser._isCompletePairing(parsed)) {
-        console.log(`[handlePairingEvent] Initial parse incomplete, trying LLM fallback...`);
-        if (raw) {
-          parsed = await EmailParser.parseWithFallback(raw, this.llmService);
-        }
-        if (!parsed) {
-          throw new Error(`Email ${uid} has no usable pairing data`);
-        }
+      if (!parsed && raw) parsed = EmailParser.parse(raw);
+      if (!parsed || !EmailParser._hasAnyPairingData(parsed)) {
+        throw new Error(`Email ${uid} has no usable pairing data`);
+      }
+      if (!EmailParser._isCompletePairing(parsed)) {
+        console.log(`[handlePairingEvent] Regex parse incomplete — routing with available subject/body data`);
       }
 
       console.log(`[handlePairingEvent] Parsed format: ${parsed.format}, round: ${parsed.roundTitle}`);
