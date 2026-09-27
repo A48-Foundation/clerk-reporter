@@ -33,7 +33,9 @@ Provide a link to the tournament **entries** page on Tabroom (with `tourn_id` an
 2. Identify all your teams (based on `SCHOOL_NAMES`)
 3. Propose a channel mapping and show **Confirm** / **Cancel** buttons
 4. On confirm, start monitoring the email inbox for pairing notifications
-5. Automatically send scouting reports as rounds are paired
+5. Automatically cache every opponent's Aff/Neg OpenCaselist data
+6. Resolve the tournament's Policy/CX judges page and cache paradigms and judging history
+7. Automatically send scouting reports as rounds are paired
 
 **Example:**
 
@@ -77,7 +79,7 @@ The bot remembers only the most recent round per channel.
 
 #### Pre-cache a Tournament (Opponents & Paradigms)
 
-Before or during a tournament, you can **prime a cache** so live reports read from disk instead of hitting OpenCaselist / Tabroom on the critical path (faster reports, fewer live requests).
+Confirming `initiate pairings reports` primes both caches automatically. You can also run the commands below to refresh either cache during a tournament.
 
 ```
 @Clerk Kent cache opponents <tabroom_entries_url>
@@ -99,6 +101,8 @@ Scrapes the tournament's judges-list page and, for every judge, pre-fetches thei
 ```
 
 Caches are keyed by Tabroom `tourn_id` and stored in `cache/` (git-ignored, ephemeral on Railway). Priming a new tournament **replaces** any previously cached tournament (only one is kept at a time). When a live pairing report runs, if a cache exists for the active session's tournament, the bot serves opponent/judge data from it. **Cache misses** (a team or judge that wasn't primed — e.g. added late) automatically fall back to a live lookup. Re-run a `cache` command to refresh, or `@Clerk Kent end` to wipe caches entirely.
+
+Pairing reports include **Opponent Data Source** and **Paradigm Source** fields showing `Cache` or `Live`.
 
 #### Set Your Aff
 
@@ -410,7 +414,7 @@ npm start
 npm test
 ```
 
-The test suite includes **218 tests** across 11 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **221 tests** across 12 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|

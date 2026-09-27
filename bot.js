@@ -422,6 +422,7 @@ class ClerkKentBot {
       // allEntries stores all teams from the tournament for opponent name lookups
       this._pendingSession = {
         tournId,
+        eventId,
         tournamentUrl: url,
         tournamentName: result.tournamentName,
         mapping,
@@ -589,12 +590,34 @@ class ClerkKentBot {
               `${teamList}\n\n` +
               `📑 Caselist: **${caselistLabel}** (\`${caselistSlug}\`)\n` +
               `📧 Email monitor started — pairing reports will be sent automatically.\n` +
+              `⏳ Automatically caching opponents and Policy/CX judges…\n` +
               `Use \`@Clerk Kent stop pairings\` to stop.`
             )
             .setColor(0x2ecc71)
         ],
         components: [this._buildPipelineButtons()],
       });
+
+      const cacheStatus = await this._primeSessionCaches(session, caselistSlug);
+      try {
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(`✅ ${session.tournamentName} — Pairings Pipeline Active`)
+              .setDescription(
+                `${teamList}\n\n` +
+                `📑 Caselist: **${caselistLabel}** (\`${caselistSlug}\`)\n` +
+                `📧 Email monitor active — pairing reports will be sent automatically.\n` +
+                `${cacheStatus.join('\n')}\n` +
+                `Use \`@Clerk Kent stop pairings\` to stop.`
+              )
+              .setColor(cacheStatus.some(line => line.startsWith('⚠️')) ? 0xf5a623 : 0x2ecc71)
+          ],
+          components: [this._buildPipelineButtons()],
+        });
+      } catch (err) {
+        console.error('[Setup] Failed to show automatic cache result:', err.message);
+      }
     } else if (interaction.customId === 'pairings_cancel') {
       this._pendingSession = null;
       await interaction.update({
@@ -1095,6 +1118,7 @@ class ClerkKentBot {
 
       if (opponentSide) {
         // Known side: single lookup
+        const dataSource = this._opponentLookupSource(session, opponentCode, opponentSide);
         const caselistResult = await this._lookupOpponentCached(session, opponentCode, opponentSide, opponentEntryNames, caselistSlug);
         if (caselistResult && caselistResult.rounds.length > 0) {
           const downloadUrlFn = (path) => this.caselistService.getDownloadUrl(path);
@@ -1107,6 +1131,7 @@ class ClerkKentBot {
             caselistUrl: caselistResult.caselistUrl,
             side: opponentSide === 'A' ? 'Aff' : 'Neg',
             argumentSummary,
+            dataSource,
           };
         } else {
           opponentData = {
@@ -1115,10 +1140,13 @@ class ClerkKentBot {
             caselistUrl: null,
             side: opponentSide === 'A' ? 'Aff' : 'Neg',
             argumentSummary,
+            dataSource,
           };
         }
       } else {
         // FLIP: look up both aff and neg sides
+        const affDataSource = this._opponentLookupSource(session, opponentCode, 'A');
+        const negDataSource = this._opponentLookupSource(session, opponentCode, 'N');
         const [affResult, negResult] = await Promise.all([
           this._lookupOpponentCached(session, opponentCode, 'A', opponentEntryNames, caselistSlug),
           this._lookupOpponentCached(session, opponentCode, 'N', opponentEntryNames, caselistSlug),
@@ -1156,6 +1184,9 @@ class ClerkKentBot {
           negCaselistUrl: negUrl,
           affArgumentSummary: affSummary,
           negArgumentSummary: negSummary,
+          dataSource: affDataSource === negDataSource
+            ? affDataSource
+            : `Aff: ${affDataSource} · Neg: ${negDataSource}`,
         };
       }
     }
@@ -1207,6 +1238,7 @@ class ClerkKentBot {
     if (sentMessage && uniqueJudges.length > 0) {
       const judgePromises = uniqueJudges.map(async (judge) => {
         const judgeName = judge.name;
+        const paradigmSource = this._paradigmLookupSource(session, judgeName);
         let paradigmUrl = null;
         let school = null;
         let philosophy = null;
@@ -1240,7 +1272,7 @@ class ClerkKentBot {
 
         return {
           name: judgeName,
-          paradigmUrl, school, philosophy, notionNotes, notionUrl,
+          paradigmUrl, school, philosophy, notionNotes, notionUrl, paradigmSource,
         };
       });
 
@@ -1287,6 +1319,12 @@ class ClerkKentBot {
     return this.caselistService.lookupOpponent(opponentCode, side, entryNames, caselistSlug);
   }
 
+  _opponentLookupSource(session, opponentCode, side) {
+    const tournId = session && session.tournId;
+    if (!tournId || !this.cache.hasOpponents(tournId)) return 'Live';
+    return this.cache.getOpponent(tournId, opponentCode, side) !== undefined ? 'Cache' : 'Live';
+  }
+
   /**
    * Fetch a judge's paradigm, preferring the primed tournament cache when one
    * exists for the active session's tournament. Judges not present in the cache
@@ -1303,6 +1341,12 @@ class ClerkKentBot {
       console.log(`[Cache] Paradigm for "${judgeName}" not primed — fetching live`);
     }
     return this.paradigmService.fetchParadigmByName(judgeName);
+  }
+
+  _paradigmLookupSource(session, judgeName) {
+    const tournId = session && session.tournId;
+    if (!tournId || !this.cache.hasParadigms(tournId)) return 'Live';
+    return this.cache.getParadigm(tournId, judgeName) !== undefined ? 'Cache' : 'Live';
   }
 
   /**
@@ -1537,6 +1581,116 @@ class ClerkKentBot {
     return history.slice(0, limit);
   }
 
+  async _primeSessionCaches(session, caselistSlug) {
+    const status = [];
+
+    try {
+      const opponents = await this._primeOpponentCache({
+        tournId: session.tournId,
+        eventId: session.eventId,
+        tournamentName: session.tournamentName,
+        entries: session.allEntries,
+        caselistSlug,
+      });
+      status.push(`💾 Opponent cache ready: ${opponents.teamCount} teams (${opponents.withData} with data).`);
+    } catch (err) {
+      console.error('[Setup] Automatic opponent cache failed:', err);
+      status.push(`⚠️ Opponent cache failed: ${err.message}`);
+    }
+
+    try {
+      const judgesUrl = await TabroomScraper.findJudgesUrl(session.tournId, session.eventId);
+      if (!judgesUrl) {
+        throw new Error('Policy/CX judges link was not found on Tabroom');
+      }
+      const paradigms = await this._primeParadigmCache({
+        tournId: session.tournId,
+        judgesUrl,
+      });
+      status.push(
+        `💾 Judge cache ready: ${paradigms.judgeCount} judges (${paradigms.withParadigm} with paradigms).`,
+      );
+    } catch (err) {
+      console.error('[Setup] Automatic judge cache failed:', err);
+      status.push(`⚠️ Judge cache failed: ${err.message}`);
+    }
+
+    return status;
+  }
+
+  async _primeOpponentCache({ tournId, eventId, tournamentName, entries, caselistSlug, onProgress }) {
+    const teams = {};
+    let withData = 0;
+    await this._mapWithConcurrency(entries, 4, async (entry) => {
+      const [aff, neg] = await Promise.all([
+        this.caselistService.lookupOpponent(entry.code, 'A', entry.entry, caselistSlug),
+        this.caselistService.lookupOpponent(entry.code, 'N', entry.entry, caselistSlug),
+      ]);
+      this._enrichRoundsWithDownloadUrls(aff);
+      this._enrichRoundsWithDownloadUrls(neg);
+      teams[entry.code.toLowerCase()] = { A: aff || null, N: neg || null };
+      if ((aff && aff.rounds && aff.rounds.length) || (neg && neg.rounds && neg.rounds.length)) {
+        withData++;
+      }
+    }, onProgress);
+
+    this.cache.saveOpponents(tournId, {
+      tournamentName,
+      eventId,
+      caselistSlug,
+    }, teams);
+    return { teamCount: entries.length, withData };
+  }
+
+  async _primeParadigmCache({ tournId, judgesUrl, judgeList: providedJudgeList, onProgress }) {
+    const judgeList = providedJudgeList || await this._scrapeJudgesList(judgesUrl);
+    if (judgeList.length === 0) {
+      throw new Error('No judges found on the resolved Policy/CX judges page');
+    }
+
+    const judges = {};
+    let withParadigm = 0;
+    let withHistory = 0;
+    await this._mapWithConcurrency(judgeList, 3, async (judge) => {
+      const fullName = `${judge.firstName} ${judge.lastName}`;
+      let paradigm = null;
+      try {
+        paradigm = judge.judgePersonId
+          ? await this.paradigmService.fetchParadigm(judge.judgePersonId)
+          : await this.paradigmService.fetchParadigmByName(fullName);
+      } catch (err) {
+        console.warn(`[Cache] Paradigm failed for ${fullName}:`, err.message);
+      }
+
+      const history = await this._fetchJudgeHistory(judge.recordUrl);
+      judges[TournamentCache.normalizeName(fullName)] = {
+        name: fullName,
+        firstName: judge.firstName,
+        lastName: judge.lastName,
+        school: (paradigm && paradigm.school) || judge.institution || null,
+        philosophy: (paradigm && paradigm.philosophy) || null,
+        paradigmUrl: (paradigm && paradigm.paradigmUrl) ||
+          (judge.judgePersonId
+            ? `https://www.tabroom.com/index/paradigm.mhtml?judge_person_id=${judge.judgePersonId}`
+            : null),
+        judgePersonId: judge.judgePersonId,
+        judgeId: judge.judgeId,
+        historyUrl: judge.recordUrl,
+        history,
+      };
+
+      if (paradigm && paradigm.philosophy) withParadigm++;
+      if (history.length) withHistory++;
+    }, onProgress);
+
+    this.cache.saveParadigms(tournId, judges);
+    return {
+      judgeCount: judgeList.length,
+      withParadigm,
+      withHistory,
+    };
+  }
+
   /**
    * Handle: @Clerk Kent cache opponents <tabroom_entries_url>
    * Pre-fetches OpenCaselist data for every entry in the tournament so live
@@ -1594,20 +1748,13 @@ class ClerkKentBot {
         `⏳ Caching opponents for **${result.tournamentName}** — 0/${result.entries.length} teams…`
       );
 
-      const teams = {};
-      let withData = 0;
-      await this._mapWithConcurrency(result.entries, 4, async (entry) => {
-        const [aff, neg] = await Promise.all([
-          this.caselistService.lookupOpponent(entry.code, 'A', entry.entry, caselistSlug),
-          this.caselistService.lookupOpponent(entry.code, 'N', entry.entry, caselistSlug),
-        ]);
-        this._enrichRoundsWithDownloadUrls(aff);
-        this._enrichRoundsWithDownloadUrls(neg);
-        teams[entry.code.toLowerCase()] = { A: aff || null, N: neg || null };
-        if ((aff && aff.rounds && aff.rounds.length) || (neg && neg.rounds && neg.rounds.length)) {
-          withData++;
-        }
-      }, async (done, total) => {
+      const cached = await this._primeOpponentCache({
+        tournId,
+        eventId,
+        tournamentName: result.tournamentName,
+        entries: result.entries,
+        caselistSlug,
+        onProgress: async (done, total) => {
         if (done === total || done % 10 === 0) {
           try {
             await progressMsg.edit(
@@ -1615,17 +1762,12 @@ class ClerkKentBot {
             );
           } catch (_) { /* ignore edit races */ }
         }
+        },
       });
-
-      this.cache.saveOpponents(tournId, {
-        tournamentName: result.tournamentName,
-        eventId,
-        caselistSlug,
-      }, teams);
 
       await progressMsg.edit(
         `✅ Cached opponents for **${result.tournamentName}** (\`tourn_id=${tournId}\`).\n` +
-        `📦 ${result.entries.length} teams stored — ${withData} with caselist data.\n` +
+        `📦 ${cached.teamCount} teams stored — ${cached.withData} with caselist data.\n` +
         'Live reports for this tournament will now read from this cache.'
       );
     } catch (err) {
@@ -1670,52 +1812,22 @@ class ClerkKentBot {
         `⏳ Caching paradigms — 0/${judgeList.length} judges…`
       );
 
-      const judges = {};
-      let withParadigm = 0;
-      let withHistory = 0;
-      await this._mapWithConcurrency(judgeList, 3, async (j) => {
-        const fullName = `${j.firstName} ${j.lastName}`;
-
-        let paradigm = null;
-        try {
-          paradigm = j.judgePersonId
-            ? await this.paradigmService.fetchParadigm(j.judgePersonId)
-            : await this.paradigmService.fetchParadigmByName(fullName);
-        } catch (err) {
-          console.warn(`[handleCacheParadigms] Paradigm failed for ${fullName}:`, err.message);
-        }
-
-        const history = await this._fetchJudgeHistory(j.recordUrl);
-
-        judges[TournamentCache.normalizeName(fullName)] = {
-          name: fullName,
-          firstName: j.firstName,
-          lastName: j.lastName,
-          school: (paradigm && paradigm.school) || j.institution || null,
-          philosophy: (paradigm && paradigm.philosophy) || null,
-          paradigmUrl: (paradigm && paradigm.paradigmUrl) ||
-            (j.judgePersonId ? `https://www.tabroom.com/index/paradigm.mhtml?judge_person_id=${j.judgePersonId}` : null),
-          judgePersonId: j.judgePersonId,
-          judgeId: j.judgeId,
-          historyUrl: j.recordUrl,
-          history,
-        };
-
-        if (paradigm && paradigm.philosophy) withParadigm++;
-        if (history.length) withHistory++;
-      }, async (done, total) => {
+      const cached = await this._primeParadigmCache({
+        tournId,
+        judgesUrl: url,
+        judgeList,
+        onProgress: async (done, total) => {
         if (done === total || done % 10 === 0) {
           try {
             await progressMsg.edit(`⏳ Caching judges — ${done}/${total} (paradigm + history)…`);
           } catch (_) { /* ignore edit races */ }
         }
+        },
       });
-
-      this.cache.saveParadigms(tournId, judges);
 
       await progressMsg.edit(
         `✅ Cached judges (\`tourn_id=${tournId}\`).\n` +
-        `📦 ${judgeList.length} judges stored — ${withParadigm} with a paradigm, ${withHistory} with judging history.\n` +
+        `📦 ${cached.judgeCount} judges stored — ${cached.withParadigm} with a paradigm, ${cached.withHistory} with judging history.\n` +
         'Live reports for this tournament will now read from this cache.'
       );
     } catch (err) {

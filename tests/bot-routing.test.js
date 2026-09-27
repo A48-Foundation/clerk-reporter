@@ -4,6 +4,7 @@ process.env.NOTION_TOKEN = process.env.NOTION_TOKEN || 'test-token';
 process.env.JUDGE_DATABASE_ID = process.env.JUDGE_DATABASE_ID || 'test-db';
 
 const Bot = require('../bot');
+const TabroomScraper = require('../tabroom-scraper');
 
 describe('Bot._resolveChannelId', () => {
   let bot;
@@ -72,5 +73,39 @@ describe('Bot.handleMessage judge lookup routing', () => {
 
     expect(bot.handleJudgeLookup).toHaveBeenCalledWith(message, 'neo cai');
     expect(message.reply).not.toHaveBeenCalled();
+  });
+});
+
+describe('Bot automatic session caching', () => {
+  test('primes opponents and the resolved Policy/CX judge pool', async () => {
+    const bot = new Bot();
+    bot._primeOpponentCache = jest.fn().mockResolvedValue({ teamCount: 12, withData: 8 });
+    bot._primeParadigmCache = jest.fn().mockResolvedValue({ judgeCount: 20, withParadigm: 15 });
+    const resolver = jest.spyOn(TabroomScraper, 'findJudgesUrl')
+      .mockResolvedValue('https://www.tabroom.com/index/tourn/judges.mhtml?category_id=9&tourn_id=1');
+    const session = {
+      tournId: '1',
+      eventId: '2',
+      tournamentName: 'Test Invitational',
+      allEntries: [{ code: 'School AB', entry: 'A & B' }],
+    };
+
+    const status = await bot._primeSessionCaches(session, 'hspolicy26');
+
+    expect(bot._primeOpponentCache).toHaveBeenCalledWith(expect.objectContaining({
+      tournId: '1',
+      eventId: '2',
+      entries: session.allEntries,
+      caselistSlug: 'hspolicy26',
+    }));
+    expect(bot._primeParadigmCache).toHaveBeenCalledWith(expect.objectContaining({
+      tournId: '1',
+      judgesUrl: expect.stringContaining('category_id=9'),
+    }));
+    expect(status).toEqual([
+      '💾 Opponent cache ready: 12 teams (8 with data).',
+      '💾 Judge cache ready: 20 judges (15 with paradigms).',
+    ]);
+    resolver.mockRestore();
   });
 });

@@ -13,6 +13,7 @@ process.env.OPENAI_API_KEY = '';
 const { Events } = require('discord.js');
 const Bot = require('../bot');
 const EmailMonitor = require('../email-monitor');
+const TabroomScraper = require('../tabroom-scraper');
 const TournamentCache = require('../tournament-cache');
 
 const required = [
@@ -54,6 +55,13 @@ async function main() {
 
     const targetChannel = await bot.client.channels.fetch(targetChannelId);
     assert(targetChannel?.isTextBased(), `Discord channel ${targetChannelId} is not text-based`);
+
+    const judgesUrl = await TabroomScraper.findJudgesUrl('40918', '389097');
+    assert(
+      judgesUrl?.includes('judges.mhtml') && judgesUrl.includes('category_id='),
+      `Could not resolve the Mid America Cup Policy/CX judges page: ${judgesUrl}`,
+    );
+    console.log(`[REPLAY] Resolved Policy/CX judges page: ${judgesUrl}`);
 
     const originalSend = targetChannel.send.bind(targetChannel);
     targetChannel.send = async payload => {

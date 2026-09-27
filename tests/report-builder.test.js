@@ -47,6 +47,7 @@ describe('ReportBuilder', () => {
         caselistUrl: 'https://opencaselist.com/hspolicy25/Coppell/CoPk',
         side: 'Neg',
         argumentSummary: '2NR - Politics (3)',
+        dataSource: 'Cache',
       };
 
       const embed = builder.buildPairingEmbed(pairing, opponent);
@@ -67,6 +68,7 @@ describe('ReportBuilder', () => {
       expect(oppField.name).toContain('AFF v. Coppell PK (Neg)');
       expect(oppField.value).toContain('[Coppell PK]');
       expect(oppField.value).toContain('2NR - Politics (3)');
+      expect(fieldMap['Opponent Data Source'].value).toBe('Cache');
     });
 
     test('pairing without opponent shows basic fields', () => {
@@ -131,6 +133,7 @@ describe('ReportBuilder', () => {
         name: 'Jenny Liu',
         paradigmUrl: 'https://tabroom.com/paradigm?id=123',
         notionNotes: '**1.** Good judge for K debates',
+        paradigmSource: 'Cache',
       };
 
       const embed = builder.buildJudgeEmbed(judge);
@@ -145,6 +148,7 @@ describe('ReportBuilder', () => {
       expect(fieldMap['Paradigm Summary']).toBeUndefined();
       expect(fieldMap['Paradigm Link'].value).toContain('[View Paradigm]');
       expect(fieldMap['**Comments**'].value).toContain('Good judge for K debates');
+      expect(fieldMap['Paradigm Source'].value).toBe('Cache');
     });
 
     test('judge with no paradigm or notion shows minimal embed', () => {

@@ -357,6 +357,52 @@ class TabroomScraper {
       categoryId: parsed.searchParams.get('category_id'),
     };
   }
+
+  /**
+   * Resolve the tournament's Policy/CX judges-list URL from Tabroom navigation.
+   * Category IDs are distinct from event IDs, so they must be discovered from
+   * links on the tournament pages rather than inferred.
+   */
+  static async findJudgesUrl(tournId, eventId) {
+    const pages = [
+      `${BASE_URL}/index/tourn/index.mhtml?tourn_id=${encodeURIComponent(tournId)}`,
+    ];
+    if (eventId) {
+      pages.unshift(
+        `${BASE_URL}/index/tourn/fields.mhtml?tourn_id=${encodeURIComponent(tournId)}&event_id=${encodeURIComponent(eventId)}`,
+      );
+    }
+
+    const candidates = new Map();
+    for (const page of pages) {
+      const html = await this.authenticatedFetch(page);
+      const $ = cheerio.load(html);
+      $('a[href*="judges.mhtml"]').each((_, el) => {
+        const href = ($(el).attr('href') || '').replace(/&amp;/g, '&');
+        if (!href) return;
+        try {
+          const url = new URL(href, BASE_URL);
+          if (!url.searchParams.get('tourn_id')) url.searchParams.set('tourn_id', tournId);
+          const context = [
+            $(el).text(),
+            $(el).closest('li, tr').first().text(),
+          ].join(' ').replace(/\s+/g, ' ').trim();
+          const score = (/\b(policy|cx)\b/i.test(context) ? 10 : 0) +
+            (url.searchParams.get('category_id') ? 2 : 0);
+          const existing = candidates.get(url.toString());
+          if (!existing || score > existing.score) {
+            candidates.set(url.toString(), { url: url.toString(), score });
+          }
+        } catch (_) { /* skip malformed navigation links */ }
+      });
+      if ([...candidates.values()].some(candidate => candidate.score >= 12)) break;
+    }
+
+    const ranked = [...candidates.values()].sort((a, b) => b.score - a.score);
+    const policyMatch = ranked.find(candidate => candidate.score >= 12);
+    if (policyMatch) return policyMatch.url;
+    return ranked.length === 1 ? ranked[0].url : null;
+  }
 }
 
 module.exports = TabroomScraper;

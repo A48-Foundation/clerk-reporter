@@ -22,6 +22,7 @@ class ReportBuilder {
       negCaselistUrl,
       affArgumentSummary,
       negArgumentSummary,
+      dataSource,
     } = opponentData || {};
 
     const formatTeam = (code) => {
@@ -66,6 +67,13 @@ class ReportBuilder {
         inline: false,
       });
     }
+    if (opponentData && dataSource) {
+      fields.push({
+        name: 'Opponent Data Source',
+        value: dataSource,
+        inline: true,
+      });
+    }
 
     return new EmbedBuilder()
       .setTitle(`📋 ${shortTitle}`)
@@ -78,6 +86,7 @@ class ReportBuilder {
       name = 'Unknown Judge',
       paradigmUrl,
       notionNotes,
+      paradigmSource,
     } = judgeData || {};
 
     const fields = [
@@ -93,6 +102,13 @@ class ReportBuilder {
         name: '**Comments**',
         value: notionNotes,
         inline: false,
+      });
+    }
+    if (paradigmSource) {
+      fields.push({
+        name: 'Paradigm Source',
+        value: paradigmSource,
+        inline: true,
       });
     }
 
