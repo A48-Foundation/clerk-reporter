@@ -607,6 +607,13 @@ async function main() {
     );
   } finally {
     if (monitor) monitor.stop();
+    for (const message of sentMessages) {
+      try {
+        await message.delete();
+      } catch (error) {
+        console.warn(`[E2E] Could not delete Discord fixture message ${message.id}: ${error.message}`);
+      }
+    }
     if (bot) bot.client.destroy();
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
