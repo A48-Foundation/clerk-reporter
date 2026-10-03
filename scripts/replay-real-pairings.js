@@ -58,6 +58,12 @@ async function main() {
     const targetChannel = await bot.client.channels.fetch(targetChannelId);
     assert(targetChannel?.isTextBased(), `Discord channel ${targetChannelId} is not text-based`);
 
+    const tournament = await TabroomScraper.scrapeEntries(resolverTournId);
+    console.log(
+      `[REPLAY] Discovered events for tourn_id=${resolverTournId}: ` +
+      tournament.events.map(event => `${event.name} (${event.eventId})`).join(', '),
+    );
+
     const judgesUrl = await TabroomScraper.findJudgesUrl(resolverTournId, resolverEventId);
     assert(
       judgesUrl?.includes('judges.mhtml') && judgesUrl.includes('category_id='),

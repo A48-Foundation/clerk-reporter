@@ -144,26 +144,38 @@ class TabroomScraper {
    */
   static async scrapeEntries(tournId, eventId) {
     if (!eventId) {
-      // Scrape the fields index to get available events
-      const html = await this.authenticatedFetch(
-        `${BASE_URL}/index/tourn/fields/entry.mhtml?tourn_id=${tournId}`
-      );
-      const $ = cheerio.load(html);
-      const tournamentName = $('h2').first().text().trim() || `Tournament ${tournId}`;
+      const indexUrls = [
+        `${BASE_URL}/index/tourn/fields.mhtml?tourn_id=${tournId}`,
+        `${BASE_URL}/index/tourn/fields/entry.mhtml?tourn_id=${tournId}`,
+      ];
+      const eventsById = new Map();
+      let tournamentName = `Tournament ${tournId}`;
 
-      const events = [];
-      $('a[href*="event_id"]').each((_, el) => {
-        const href = $(el).attr('href') || '';
-        const text = $(el).text().trim();
-        try {
-          const full = href.startsWith('http') ? href : `${BASE_URL}${href}`;
-          const parsed = new URL(full.replace(/&amp;/g, '&'));
-          const evId = parsed.searchParams.get('event_id');
-          if (evId && text) events.push({ eventId: evId, name: text, url: parsed.toString() });
-        } catch (_) {}
-      });
+      for (const indexUrl of indexUrls) {
+        const html = await this.authenticatedFetch(indexUrl);
+        const $ = cheerio.load(html);
+        const heading = $('h2').first().text().trim();
+        if (heading) tournamentName = heading;
 
-      return { tournamentName, events, entries: [] };
+        $('a[href*="event_id"], select[name*="event"] option').each((_, el) => {
+          const raw = $(el).attr('href') || $(el).attr('value') || '';
+          const text = $(el).text().replace(/\s+/g, ' ').trim();
+          if (!raw || !text) return;
+          try {
+            const parsed = /^\d+$/.test(raw)
+              ? new URL(`${BASE_URL}/index/tourn/fields.mhtml?tourn_id=${tournId}&event_id=${raw}`)
+              : new URL(raw.replace(/&amp;/g, '&'), BASE_URL);
+            const evId = parsed.searchParams.get('event_id');
+            if (evId && !eventsById.has(evId)) {
+              eventsById.set(evId, { eventId: evId, name: text, url: parsed.toString() });
+            }
+          } catch (_) { /* skip malformed event links */ }
+        });
+
+        if (eventsById.size > 0) break;
+      }
+
+      return { tournamentName, events: [...eventsById.values()], entries: [] };
     }
 
     // Scrape specific event entries

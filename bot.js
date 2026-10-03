@@ -350,13 +350,18 @@ class ClerkKentBot {
 
       // If no eventId, show event picker
       if (!eventId && result.events.length > 0) {
-        // Auto-select policy events if there's only one, otherwise show list
+        // Auto-select the tournament's only event. For multi-event tournaments,
+        // auto-select only when exactly one event is labeled Policy/CX.
         const policyEvents = result.events.filter(e =>
           /policy|cx/i.test(e.name)
         );
 
-        if (policyEvents.length === 1) {
-          eventId = policyEvents[0].eventId;
+        const selectedEvent = result.events.length === 1
+          ? result.events[0]
+          : (policyEvents.length === 1 ? policyEvents[0] : null);
+
+        if (selectedEvent) {
+          eventId = selectedEvent.eventId;
           result = await TabroomScraper.scrapeEntries(tournId, eventId);
         } else {
           const eventList = result.events.map((e, i) => `**${i + 1}.** ${e.name}`).join('\n');
