@@ -1094,6 +1094,19 @@ class ClerkKentBot {
     return null;
   }
 
+  _formatReportTeamCode(teamCode) {
+    const words = String(teamCode || '').trim().replace(/\s+/g, ' ').split(' ');
+    return words.map((word, index) => {
+      if (index === words.length - 1 && /^[a-z]{1,4}$/i.test(word)) {
+        return word.toUpperCase();
+      }
+      if (word === word.toLowerCase()) {
+        return word.charAt(0).toUpperCase() + word.slice(1);
+      }
+      return word;
+    }).join(' ');
+  }
+
   /**
    * Process a single team's pairing: look up opponent, judges, send report.
    */
@@ -1219,7 +1232,7 @@ class ClerkKentBot {
       room,
       side,
       teamCode: ourTeamCode,
-      reportTeamCode: teamMapping.teamCode,
+      reportTeamCode: this._formatReportTeamCode(teamMapping.teamCode),
       aff: aff || { teamCode: side === 'NEG' ? opponentCode : ourTeamCode },
       neg: neg || { teamCode: side === 'NEG' ? ourTeamCode : opponentCode },
     };

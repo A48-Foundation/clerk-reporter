@@ -177,6 +177,7 @@ describe('pairing pipeline — parse → route → send', () => {
     const { bot, channel, fetchedIds } = makeBot({
       channelMappings: { 'Interlake Shreshth Seth & Aanya Chetan': 'CH_INT' },
     });
+
     const parsed = parseRound3();
     parsed.startTime = null;
     parsed.side = null;
@@ -191,6 +192,27 @@ describe('pairing pipeline — parse → route → send', () => {
     expect(bot.llmService._client.chat.completions.create).not.toHaveBeenCalled();
     expect(channel.send).toHaveBeenCalledTimes(1);
     expect(fetchedIds).toContain('CH_INT');
+  });
+
+  test('normalizes the mapped team label shown in the report footer', async () => {
+    const { bot, channel } = makeBot({
+      channelMappings: { '  interlake   nm  ': 'CH_NM' },
+    });
+    const parsed = parseRound3();
+    parsed.teamCode = 'Interlake NM';
+    parsed.aff.teamCode = 'Interlake NM';
+
+    await bot.handlePairingEvent({
+      uid: 1,
+      parsed,
+      subjectTeamCode: 'Interlake NM',
+    });
+
+    expect(channel.send.mock.calls[0][0].embeds[0].data.fields).toContainEqual({
+      name: 'Team',
+      value: 'Interlake NM',
+      inline: true,
+    });
   });
 
   test('resolves the channel by debater-initial suffix when the mapping key differs', async () => {

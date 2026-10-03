@@ -414,7 +414,7 @@ npm start
 npm test
 ```
 
-The test suite includes **237 tests** across 14 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **238 tests** across 14 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
@@ -425,7 +425,7 @@ The test suite includes **237 tests** across 14 files, and runs automatically in
 | `llm-service.test.js` | 18 | Frequency analysis, contact-row filtering, inline doc links, paradigm truncation, and summary fallback |
 | `report-builder.test.js` | 13 | Embed construction, doc link fields, truncation, embed cap |
 | `bot-routing.test.js` | 14 | Command dispatch, automatic caching, and tolerant channel resolution |
-| `pairing-flow.test.js` | 11 | **End-to-end**: parse → route → send, wiki-title links, partial deterministic routing, subject identity, retriable failures, monitor restore |
+| `pairing-flow.test.js` | 12 | **End-to-end**: parse → route → send, wiki-title links, team-label normalization, partial deterministic routing, subject identity, retriable failures, monitor restore |
 | `report-commands-e2e.test.js` | 2 | **Command E2E**: pairing setup/confirmation/delivery and coach activation/assignment delivery |
 | `tournament-cache.test.js` | 8 | Name normalization, opponent/paradigm priming, miss vs cached-empty semantics |
 | `email-monitor.test.js` | 5 | MIME body selection, awaited delivery-before-seen, isolated E2E search, and E2E-message rejection |
