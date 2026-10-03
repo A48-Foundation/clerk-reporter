@@ -444,7 +444,7 @@ async function main() {
     assert(coachCandidate, 'Live Tabroom judges page did not provide a coach candidate');
     const coachName = `${coachCandidate.firstName} ${coachCandidate.lastName}`;
     let coachData = null;
-    bot.store.getSchoolNames = () => [coachCandidate.institution];
+    bot.store.getSchoolNames = () => ['Interlake', coachCandidate.institution];
     bot.store.setCoaches = data => { coachData = data; };
     bot.store.getCoaches = () => coachData;
 
