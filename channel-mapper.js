@@ -30,8 +30,14 @@ class ChannelMapper {
     const candidates = [];
     const parts = teamCode.trim().split(/\s+/);
 
-    // 1. Short-code style: the last space-separated token (e.g. "WY").
-    if (parts.length >= 2) candidates.push(parts[parts.length - 1]);
+    // 1. Short-code style: try two-letter last-name initials in both orders.
+    if (parts.length >= 2) {
+      const suffix = parts[parts.length - 1];
+      candidates.push(suffix);
+      if (/^[a-z]{2}$/i.test(suffix) && suffix[0].toLowerCase() !== suffix[1].toLowerCase()) {
+        candidates.push(suffix[1] + suffix[0]);
+      }
+    }
 
     // 2. Partnership full names: "<School> First Last & First Last".
     //    Use the last word on each side of the "&" as each debater's last name.

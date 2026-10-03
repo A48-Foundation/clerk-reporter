@@ -39,6 +39,11 @@ describe('Bot._resolveChannelId', () => {
     expect(bot._resolveChannelId(session, 'Interlake YW')).toBe('CH_WY');
   });
 
+  test('short code YW resolves a mapping stored as WY', () => {
+    const shortCodeSession = { channelMappings: { 'Ducks Independent WY': 'CH_DUCKS_WY' } };
+    expect(bot._resolveChannelId(shortCodeSession, 'Ducks Independent YW')).toBe('CH_DUCKS_WY');
+  });
+
   test('a different partnership resolves to its own channel', () => {
     expect(bot._resolveChannelId(session, 'Interlake Krishiv Goswami & Oliver Chen')).toBe('CH_GC');
   });

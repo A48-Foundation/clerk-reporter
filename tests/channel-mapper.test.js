@@ -52,8 +52,8 @@ describe('ChannelMapper', () => {
   describe('candidateSuffixes', () => {
     const mapper = new ChannelMapper(createMockClient());
 
-    test('short code returns the last token', () => {
-      expect(mapper.candidateSuffixes('Interlake WY')).toEqual(['WY']);
+    test('two-letter short code returns both last-name orders', () => {
+      expect(mapper.candidateSuffixes('Interlake YW')).toEqual(['YW', 'WY']);
     });
 
     test('partnership full names derive last-name initials both orders', () => {
@@ -125,6 +125,21 @@ describe('ChannelMapper', () => {
       const result = await mapper.autoMap(['Interlake Julia Ye & Aaron Wang']);
       expect(result).toEqual({
         'Interlake Julia Ye & Aaron Wang': {
+          channelId: 'ch9',
+          channelName: 'wy-tournaments',
+          confidence: 'auto',
+        },
+      });
+    });
+
+    test('maps reversed two-letter team code to the existing channel order', async () => {
+      const channels = [{ id: 'ch9', name: 'wy-tournaments' }];
+      const mapper = new ChannelMapper(createMockClient(channels));
+
+      const result = await mapper.autoMap(['Ducks Independent YW']);
+
+      expect(result).toEqual({
+        'Ducks Independent YW': {
           channelId: 'ch9',
           channelName: 'wy-tournaments',
           confidence: 'auto',
