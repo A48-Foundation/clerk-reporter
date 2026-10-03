@@ -73,6 +73,21 @@ describe('constructor / load', () => {
   });
 });
 
+describe('default school tiers', () => {
+  test('includes Ducks Independent in HS Policy detection', () => {
+    const store = new TournamentStore();
+    const match = store.matchSchoolTier([
+      { code: 'Ducks Independent ST', entry: 'Shen & Tran' },
+    ]);
+
+    expect(match).not.toBeNull();
+    expect(match.tier.label).toBe('HS Policy');
+    expect(match.entries).toEqual([
+      { code: 'Ducks Independent ST', entry: 'Shen & Tran' },
+    ]);
+  });
+});
+
 // ── addTeam ─────────────────────────────────────────────────────────
 
 describe('addTeam', () => {

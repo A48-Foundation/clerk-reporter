@@ -147,6 +147,19 @@ describe('ChannelMapper', () => {
       });
     });
 
+    test('maps Ducks Independent ST to st-tournaments', async () => {
+      const channels = [{ id: 'ch10', name: 'st-tournaments' }];
+      const mapper = new ChannelMapper(createMockClient(channels));
+
+      const result = await mapper.autoMap(['Ducks Independent ST']);
+
+      expect(result['Ducks Independent ST']).toEqual({
+        channelId: 'ch10',
+        channelName: 'st-tournaments',
+        confidence: 'auto',
+      });
+    });
+
     test('returns empty object for empty array', async () => {
       const mapper = new ChannelMapper(createMockClient());
       expect(await mapper.autoMap([])).toEqual({});

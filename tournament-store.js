@@ -105,7 +105,11 @@ class TournamentStore {
   getSchoolTiers() {
     const year = this.getSeasonYear();
     const tiers = this.settings.schoolTiers || [
-      { schools: ['Interlake', 'Cuttlefish', 'Cuttlefish Independent'], caselistBase: 'hspolicy', label: 'HS Policy' },
+      {
+        schools: ['Interlake', 'Cuttlefish', 'Cuttlefish Independent', 'Ducks Independent'],
+        caselistBase: 'hspolicy',
+        label: 'HS Policy',
+      },
       { schools: ['Dartmouth'], caselistBase: 'ndtceda', label: 'College NDT/CEDA' },
     ];
     // Resolve each tier's caselist slug from its base + the current season year.

@@ -331,7 +331,7 @@ IMAP_PASSWORD=abcdefghijklmnop
 
 # ── Optional ──────────────────────────────────────────
 OPENAI_API_KEY=sk-...
-SCHOOL_NAMES=Interlake,Cuttlefish,Cuttlefish Independent
+SCHOOL_NAMES=Interlake,Cuttlefish,Cuttlefish Independent,Ducks Independent
 SEASON_YEAR=26
 FEEDBACK_DATABASE_ID=abc123-...
 ```
@@ -401,7 +401,7 @@ npm start
    IMAP_EMAIL=clerk.kent.debate@gmail.com
    IMAP_PASSWORD=abcdefghijklmnop
    OPENAI_API_KEY=sk-...
-   SCHOOL_NAMES=Interlake,Cuttlefish,Cuttlefish Independent
+   SCHOOL_NAMES=Interlake,Cuttlefish,Cuttlefish Independent,Ducks Independent
    ```
 
 6. Deploy — the bot will start automatically and reconnect on restarts
@@ -414,7 +414,7 @@ npm start
 npm test
 ```
 
-The test suite includes **231 tests** across 13 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **233 tests** across 13 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
