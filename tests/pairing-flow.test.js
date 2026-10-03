@@ -133,6 +133,33 @@ describe('pairing pipeline — parse → route → send', () => {
     expect(payload.embeds.length).toBeGreaterThan(0);
   });
 
+  test('keeps the opponent wiki link when no round reports are available', async () => {
+    const { bot, channel } = makeBot({
+      channelMappings: { 'Interlake Shreshth Seth & Aanya Chetan': 'CH_INT' },
+    });
+    bot._lookupOpponentCached = jest.fn(async () => ({
+      schoolName: 'Lowell',
+      teamCode: 'CS',
+      caselistUrl: 'https://opencaselist.com/hspolicy26/Lowell/LowellCS/Aff',
+      rounds: [],
+    }));
+
+    await bot.handlePairingEvent({ uid: 1, parsed: parseRound3() });
+
+    const pairingEmbed = channel.send.mock.calls[0][0].embeds[0].data;
+    expect(pairingEmbed.title).toBe(
+      'R3: Aff v. Lowell CS (Neg)',
+    );
+    expect(pairingEmbed.url).toBe(
+      'https://opencaselist.com/hspolicy26/Lowell/LowellCS/Aff',
+    );
+    expect(pairingEmbed.fields).toContainEqual({
+      name: 'Team',
+      value: 'Interlake Shreshth Seth & Aanya Chetan',
+      inline: true,
+    });
+  });
+
   test('routes by the full subject identity when body parsing mangles our team code', async () => {
     const { bot, channel, fetchedIds } = makeBot({
       channelMappings: { 'Interlake Shreshth Seth & Aanya Chetan': 'CH_INT' },
@@ -176,6 +203,11 @@ describe('pairing pipeline — parse → route → send', () => {
 
     expect(channel.send).toHaveBeenCalledTimes(1);
     expect(fetchedIds).toContain('CH_SC');
+    expect(channel.send.mock.calls[0][0].embeds[0].data.fields).toContainEqual({
+      name: 'Team',
+      value: 'Interlake SC',
+      inline: true,
+    });
   });
 
   test('does not resend the same team+round (dedup)', async () => {

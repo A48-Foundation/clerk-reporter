@@ -1063,14 +1063,18 @@ class ClerkKentBot {
    * Returns the channelId string, or null if nothing matches.
    */
   _resolveChannelId(session, teamCode) {
+    return this._resolveTeamMapping(session, teamCode)?.channelId || null;
+  }
+
+  _resolveTeamMapping(session, teamCode) {
     const mappings = (session && session.channelMappings) || {};
     if (!teamCode) return null;
-    if (mappings[teamCode]) return mappings[teamCode];
+    if (mappings[teamCode]) return { teamCode, channelId: mappings[teamCode] };
 
     const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
     const target = norm(teamCode);
     for (const [key, id] of Object.entries(mappings)) {
-      if (norm(key) === target) return id;
+      if (norm(key) === target) return { teamCode: key, channelId: id };
     }
 
     const mapper = this.channelMapper || new ChannelMapper(null);
@@ -1082,7 +1086,9 @@ class ClerkKentBot {
         const keySuffixes = mapper
           .candidateSuffixes(key)
           .map((c) => c.toLowerCase());
-        if (keySuffixes.some((c) => wanted.has(c))) return id;
+        if (keySuffixes.some((c) => wanted.has(c))) {
+          return { teamCode: key, channelId: id };
+        }
       }
     }
     return null;
@@ -1105,13 +1111,13 @@ class ClerkKentBot {
     }
 
     // Find the channel for our team
-    const channelId = this._resolveChannelId(session, ourTeamCode);
-    if (!channelId) {
+    const teamMapping = this._resolveTeamMapping(session, ourTeamCode);
+    if (!teamMapping) {
       console.warn(`[Pairing] No channel mapped for ${ourTeamCode}`);
       return false;
     }
 
-    const channel = await this.client.channels.fetch(channelId);
+    const channel = await this.client.channels.fetch(teamMapping.channelId);
     if (!channel) return false;
 
     await channel.sendTyping();
@@ -1146,9 +1152,9 @@ class ClerkKentBot {
           };
         } else {
           opponentData = {
-            schoolName: opponentCode,
-            teamCode: '',
-            caselistUrl: null,
+            schoolName: caselistResult?.schoolName || opponentCode,
+            teamCode: caselistResult?.teamCode || '',
+            caselistUrl: caselistResult?.caselistUrl || null,
             side: opponentSide === 'A' ? 'Aff' : 'Neg',
             argumentSummary,
             dataSource,
@@ -1171,19 +1177,23 @@ class ClerkKentBot {
         let schoolName = opponentCode;
         let teamCode = '';
 
-        if (affResult && affResult.rounds.length > 0) {
-          affSummary = this.llmService.summarizeWithFallback(affResult.rounds, 'A', downloadUrlFn);
+        if (affResult) {
           affUrl = affResult.caselistUrl;
           schoolName = affResult.schoolName;
           teamCode = affResult.teamCode;
+          if (affResult.rounds.length > 0) {
+            affSummary = this.llmService.summarizeWithFallback(affResult.rounds, 'A', downloadUrlFn);
+          }
         }
-        if (negResult && negResult.rounds.length > 0) {
-          const negContext = { ourAff: this.store.getOurAff() };
-          negSummary = this.llmService.summarizeWithFallback(negResult.rounds, 'N', downloadUrlFn, negContext);
+        if (negResult) {
           negUrl = negResult.caselistUrl;
           if (!teamCode) {
             schoolName = negResult.schoolName;
             teamCode = negResult.teamCode;
+          }
+          if (negResult.rounds.length > 0) {
+            const negContext = { ourAff: this.store.getOurAff() };
+            negSummary = this.llmService.summarizeWithFallback(negResult.rounds, 'N', downloadUrlFn, negContext);
           }
         }
 
@@ -1209,6 +1219,7 @@ class ClerkKentBot {
       room,
       side,
       teamCode: ourTeamCode,
+      reportTeamCode: teamMapping.teamCode,
       aff: aff || { teamCode: side === 'NEG' ? opponentCode : ourTeamCode },
       neg: neg || { teamCode: side === 'NEG' ? ourTeamCode : opponentCode },
     };

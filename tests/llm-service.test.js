@@ -55,8 +55,8 @@ describe('LlmService', () => {
       ];
       const result = service.summarizeArguments(rounds, 'A');
       expect(result).toContain('1AC - PNT (2)');
-      expect(result).toContain('1AC - sci dip (1)');
-      expect(result).toContain('Most Recent: sci dip - Greenhill, Round 3');
+      expect(result).not.toContain('sci dip');
+      expect(result).toContain('Most Recent: PNT - Berkeley, Round 2');
     });
 
     test('extracts 2NR arguments for neg side', () => {
@@ -97,6 +97,26 @@ describe('LlmService', () => {
       ];
       const result = service.summarizeArguments(rounds, 'A');
       expect(result).toContain('1AC - PNT');
+    });
+
+    test('ignores contact rows and reports without an explicit 1AC', () => {
+      const rounds = [
+        {
+          tournament: '(Contact Info)',
+          round: 'Finals',
+          report: 'Please disclose the 1AC and any interpretations you want us to meet 30 minutes before the round.',
+        },
+        { tournament: 'Contacts', round: '1', report: '1AC - Email us before the round' },
+        { tournament: 'Stanford', round: '2', report: 'We ran Single Payer; 2NR T' },
+        { tournament: 'Berkeley', round: '3', report: '1AC - Single Payer; 2NR Politics' },
+      ];
+
+      const result = service.summarizeArguments(rounds, 'A');
+
+      expect(result).toContain('1AC - Single Payer (1)');
+      expect(result).toContain('Most Recent: Single Payer - Berkeley, Round 3');
+      expect(result).not.toContain('interpretations');
+      expect(result).not.toContain('Email us');
     });
 
     test('extracts args from multi-line OpenCaselist format (1AC---X\\n1NC---...\\n2NR---...)', () => {

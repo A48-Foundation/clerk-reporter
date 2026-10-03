@@ -61,7 +61,11 @@ class LlmService {
    * @returns {string}
    */
   summarizeArguments(rounds, side, getDownloadUrl, negContext) {
-    const reportsWithText = rounds.filter(r => r.report && r.report.trim());
+    const reportsWithText = rounds.filter((round) => {
+      if (!round.report || !round.report.trim()) return false;
+      const tournament = String(round.tournament || '').replace(/[()[\]]/g, ' ');
+      return !/\bcontacts?\b/i.test(tournament);
+    });
     if (reportsWithText.length === 0) {
       return '_No round reports available._';
     }
@@ -76,9 +80,7 @@ class LlmService {
       let arg = null;
 
       if (side === 'A') {
-        const match = text.match(/1ac\s*[-:.]*\s*(?:was\s+)?(.+?)(?:\s*[;,]|$)/im)
-          || text.match(/(?:we\s+)?ran\s+(.+?)(?:\s*[;,]|$)/im)
-          || text.match(/^(.+?)(?:\s*[;,])/i);
+        const match = text.match(/(?:^|[;\n])\s*1ac\s*[-:.]*\s*(?:was\s+)?(.+?)(?:\s*[;,]|$)/im);
         if (match) arg = match[1].trim();
       } else {
         const match = text.match(/2nr\s*[-:.]*\s*(?:was\s+)?(.+?)(?:\s*[;,.]|$)/im);

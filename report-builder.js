@@ -10,6 +10,7 @@ class ReportBuilder {
       aff = {},
       neg = {},
       teamCode,
+      reportTeamCode,
     } = pairingData || {};
 
     const {
@@ -37,8 +38,12 @@ class ReportBuilder {
 
     const opponentName = schoolName && oppCode ? `${schoolName} ${oppCode}` : (aff.teamCode === teamCode ? neg.teamCode : aff.teamCode) || 'TBD';
     const opponentSide = side === 'AFF' || side === 'Aff' ? 'Neg' : side === 'NEG' || side === 'Neg' ? 'Aff' : 'FLIP';
-    // Our side label
-    const ourSide = side || 'FLIP';
+    const normalizedSide = String(side || 'FLIP').toUpperCase();
+    const ourSide = normalizedSide === 'AFF' ? 'Aff' : normalizedSide === 'NEG' ? 'Neg' : 'FLIP';
+    const title = pairingData
+      ? `${shortTitle}: ${ourSide} v. ${opponentName} (${opponentSide})`
+      : shortTitle;
+    const titleUrl = caselistUrl || affCaselistUrl || negCaselistUrl;
 
     const fields = [
       { name: 'Room', value: room || 'N/A', inline: true },
@@ -46,24 +51,20 @@ class ReportBuilder {
     ];
 
     if (opponentData && opponentData.side === 'FLIP') {
-      // FLIP: show both aff and neg summaries
-      const affOppDisplay = affCaselistUrl ? `[${opponentName}](${affCaselistUrl})` : opponentName;
       fields.push({
-        name: `🐟 FLIP v. ${opponentName} — Their Aff`,
-        value: `${affOppDisplay}\n${affArgumentSummary || '_No data_'}`,
+        name: 'Their Aff Arguments',
+        value: affArgumentSummary || '_No data_',
         inline: false,
       });
-      const negOppDisplay = negCaselistUrl ? `[${opponentName}](${negCaselistUrl})` : opponentName;
       fields.push({
-        name: `🐟 FLIP v. ${opponentName} — Their Neg`,
-        value: `${negOppDisplay}\n${negArgumentSummary || '_No data_'}`,
+        name: 'Their Neg Arguments',
+        value: negArgumentSummary || '_No data_',
         inline: false,
       });
     } else if (argumentSummary) {
-      const oppDisplay = caselistUrl ? `[${opponentName}](${caselistUrl})` : opponentName;
       fields.push({
-        name: `🐟 ${ourSide} v. ${opponentName} (${opponentSide})`,
-        value: `${oppDisplay}\n${argumentSummary}`,
+        name: 'Opponent Arguments',
+        value: argumentSummary,
         inline: false,
       });
     }
@@ -74,11 +75,20 @@ class ReportBuilder {
         inline: true,
       });
     }
+    if (reportTeamCode || teamCode) {
+      fields.push({
+        name: 'Team',
+        value: reportTeamCode || teamCode,
+        inline: true,
+      });
+    }
 
-    return new EmbedBuilder()
-      .setTitle(`📋 ${shortTitle}`)
+    const embed = new EmbedBuilder()
+      .setTitle(title)
       .setColor(0xf5a623)
       .addFields(fields);
+    if (titleUrl) embed.setURL(titleUrl);
+    return embed;
   }
 
   buildJudgeEmbed(judgeData) {

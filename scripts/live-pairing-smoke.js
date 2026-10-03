@@ -132,7 +132,7 @@ const scenarios = [
       judges: ['Cached Judge'],
     }),
     reports: [{
-      title: '📋 R41',
+      title: 'R41: Aff v. Cache Academy CH (Neg)',
       room: '401A',
       opponent: 'Cache Academy CH',
       caselist: true,
@@ -154,7 +154,7 @@ const scenarios = [
       judges: ['Missing Judge', 'Second Judge'],
     }),
     reports: [{
-      title: '📋 R42',
+      title: 'R42: Neg v. No Data ND (Aff)',
       room: '402A',
       opponent: 'No Data ND',
       caselist: false,
@@ -175,7 +175,7 @@ const scenarios = [
       judges: ['Live Fallback Judge'],
     }),
     reports: [{
-      title: '📋 R43',
+      title: 'R43: Aff v. Live Academy Alice Alpha & Bob Beta (Neg)',
       room: '403A',
       opponent: 'Live Academy Alice Alpha & Bob Beta',
       caselist: true,
@@ -187,14 +187,14 @@ const scenarios = [
     email: assignmentEmail,
     reports: [
       {
-        title: '📋 R44',
+        title: 'R44: Aff v. Assign Opponent AO (Neg)',
         room: '401',
         opponent: 'Assign Opponent AO',
         caselist: true,
         judges: [{ name: 'Assignment One', paradigm: true, comments: false }],
       },
       {
-        title: '📋 R44',
+        title: 'R44: Neg v. Assign Opponent BO (Aff)',
         room: '402',
         opponent: 'Assign Opponent BO',
         caselist: true,
@@ -214,7 +214,7 @@ const scenarios = [
       judges: ['Flip Judge'],
     }),
     reports: [{
-      title: '📋 Doubles of Policy',
+      title: 'Doubles of Policy: FLIP v. Flip Opponent FO (FLIP)',
       room: '405A',
       opponent: 'Flip Opponent FO',
       caselist: true,
@@ -240,7 +240,7 @@ const scenarios = [
     key: 'failed-route-retry',
     duplicateOf: 'failed-route',
     reports: [{
-      title: '📋 R47',
+      title: 'R47: Aff v. Retry Opponent RO (Neg)',
       room: '407A',
       opponent: 'Retry Opponent RO',
       caselist: true,
@@ -258,7 +258,7 @@ const scenarios = [
       judges: ['Tom Mickelson'],
     }),
     reports: [{
-      title: '📋 R48',
+      title: 'R48: Aff v. Coppell PK (Neg)',
       room: '408A',
       opponent: 'Coppell PK',
       caselist: true,
@@ -348,9 +348,8 @@ function assertReport(message, expected) {
   assert.strictEqual(pairing.title, expected.title);
   assert.strictEqual(fieldValue(pairing, 'Room'), expected.room);
 
-  const opponentField = (pairing.fields || []).find(field => field.name.includes(expected.opponent));
-  assert(opponentField, `${expected.title}/${expected.room}: missing opponent ${expected.opponent}`);
-  const hasCaselistLink = /https:\/\/opencaselist\.com\//i.test(opponentField.value);
+  assert(pairing.title.includes(expected.opponent), `${expected.title}/${expected.room}: missing opponent`);
+  const hasCaselistLink = /https:\/\/opencaselist\.com\//i.test(pairing.url || '');
   assert.strictEqual(
     hasCaselistLink,
     expected.caselist,
@@ -358,10 +357,11 @@ function assertReport(message, expected) {
   );
   if (expected.liveCaselist) {
     assert(
-      /https:\/\/opencaselist\.com\/hspolicy26\/Coppell\//i.test(opponentField.value),
+      /https:\/\/opencaselist\.com\/hspolicy26\/Coppell\//i.test(pairing.url || ''),
       'Live OpenCaselist contract did not produce the configured Coppell URL',
     );
   }
+  assert(/^Interlake\b/.test(fieldValue(pairing, 'Team')));
 
   for (const expectedJudge of expected.judges) {
     const judge = embeds.find(embed => embed.title === `⚖️ ${expectedJudge.name}`);

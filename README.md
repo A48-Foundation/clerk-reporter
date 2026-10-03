@@ -102,7 +102,7 @@ Scrapes the tournament's judges-list page and, for every judge, pre-fetches thei
 
 Caches are keyed by Tabroom `tourn_id` and stored in `cache/` (git-ignored, ephemeral on Railway). Priming a new tournament **replaces** any previously cached tournament (only one is kept at a time). When a live pairing report runs, if a cache exists for the active session's tournament, the bot serves opponent/judge data from it. **Cache misses** (a team or judge that wasn't primed — e.g. added late) automatically fall back to a live lookup. Re-run a `cache` command to refresh, or `@Clerk Kent end` to wipe caches entirely.
 
-Pairing reports include **Opponent Data Source** and **Paradigm Source** fields showing `Cache` or `Live`.
+Pairing report titles show the round, side, and matchup and link directly to the opponent's OpenCaselist wiki when available. Reports include **Opponent Data Source**, **Team**, and **Paradigm Source** fields; argument summaries ignore contact-information pseudo-rounds and AFF reports without an explicit `1AC`.
 
 #### Set Your Aff
 
@@ -414,7 +414,7 @@ npm start
 npm test
 ```
 
-The test suite includes **235 tests** across 14 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **237 tests** across 14 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
@@ -422,10 +422,10 @@ The test suite includes **235 tests** across 14 files, and runs automatically in
 | `caselist-service.test.js` | 39 | Team code parsing (short codes + full names), school lookup, wiki URL, entry name matching |
 | `tournament-store.test.js` | 33 | Load/save, team tracking, session management, email UID tracking, settings |
 | `channel-mapper.test.js` | 19 | Team suffix/candidate extraction, channel lookup, auto-mapping |
-| `llm-service.test.js` | 17 | Frequency analysis, inline doc links, paradigm truncation, and summary fallback |
+| `llm-service.test.js` | 18 | Frequency analysis, contact-row filtering, inline doc links, paradigm truncation, and summary fallback |
 | `report-builder.test.js` | 13 | Embed construction, doc link fields, truncation, embed cap |
 | `bot-routing.test.js` | 14 | Command dispatch, automatic caching, and tolerant channel resolution |
-| `pairing-flow.test.js` | 10 | **End-to-end**: parse → route → send, partial deterministic routing, subject identity, retriable failures, monitor restore |
+| `pairing-flow.test.js` | 11 | **End-to-end**: parse → route → send, wiki-title links, partial deterministic routing, subject identity, retriable failures, monitor restore |
 | `report-commands-e2e.test.js` | 2 | **Command E2E**: pairing setup/confirmation/delivery and coach activation/assignment delivery |
 | `tournament-cache.test.js` | 8 | Name normalization, opponent/paradigm priming, miss vs cached-empty semantics |
 | `email-monitor.test.js` | 5 | MIME body selection, awaited delivery-before-seen, isolated E2E search, and E2E-message rejection |
