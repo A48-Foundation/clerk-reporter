@@ -279,6 +279,8 @@ for (const scenario of scenarios) {
   if (scenario.duplicateOf) scenario.email = byKey.get(scenario.duplicateOf).email;
 }
 const expectedReports = scenarios.flatMap(scenario => scenario.reports || []);
+const liveCoachJudgesUrl =
+  'https://www.tabroom.com/index/tourn/judges.mhtml?category_id=109213&tourn_id=40918';
 
 function plusAddress(email, tag) {
   const at = email.lastIndexOf('@');
@@ -433,11 +435,40 @@ async function main() {
       emailMonitorActive: false,
     };
     bot.store.save = () => {};
-    bot.store.getSchoolNames = () => ['Interlake'];
     bot.store.getCaselistForTeam = () => 'hspolicy26';
     bot.store.getEntryNamesForTeam = () => null;
-    bot.store.getCoaches = () => null;
     bot._mirrorToHQ = async () => {};
+
+    const liveJudges = await bot._scrapeJudgesList(liveCoachJudgesUrl);
+    const coachCandidate = liveJudges.find(judge => judge.institution);
+    assert(coachCandidate, 'Live Tabroom judges page did not provide a coach candidate');
+    const coachName = `${coachCandidate.firstName} ${coachCandidate.lastName}`;
+    let coachData = null;
+    bot.store.getSchoolNames = () => [coachCandidate.institution];
+    bot.store.setCoaches = data => { coachData = data; };
+    bot.store.getCoaches = () => coachData;
+
+    await bot.handleReportCoaches({
+      channel: targetChannel,
+      reply: payload => targetChannel.send(payload),
+    }, liveCoachJudgesUrl);
+    assert(
+      coachData?.coaches.some(coach => coach.name === coachName),
+      `report coaches did not activate live judge ${coachName}`,
+    );
+
+    const coachScenario = {
+      key: 'coach-assignment',
+      email: liveUpdate({
+        team: coachName,
+        opponent: 'Coach Opponent CO',
+        round: 48,
+        side: 'AFF',
+        room: '408A',
+        judges: [coachName],
+      }),
+    };
+    const runScenarios = [...scenarios, coachScenario];
 
     bot.cache = new TournamentCache(cacheDir);
     bot.cache.saveOpponents(tournamentId, { tournamentName: 'E2E' }, {
@@ -496,7 +527,7 @@ async function main() {
     });
     await retry('SMTP verification', () => transporter.verify());
 
-    for (const scenario of scenarios) {
+    for (const scenario of runScenarios) {
       await retry(`sending ${scenario.key}`, () =>
         transporter.sendMail({
           from: process.env.E2E_GMAIL_EMAIL,
@@ -566,9 +597,11 @@ async function main() {
     monitor.start();
 
     await waitFor(
-      () => receivedUids.size === scenarios.length && sentMessages.length === expectedReports.length,
+      () => receivedUids.size === runScenarios.length &&
+        sentMessages.length === expectedReports.length + 2,
       240000,
-      `${scenarios.length} Gmail messages and ${expectedReports.length} Discord reports`,
+      `${runScenarios.length} Gmail messages, ${expectedReports.length} pairing reports, ` +
+        'and coach activation/report output',
     );
     await processing;
     if (processingErrors.length) throw processingErrors[0];
@@ -577,9 +610,19 @@ async function main() {
     for (const message of sentMessages) {
       delivered.push(await targetChannel.messages.fetch(message.id));
     }
-    assert.strictEqual(delivered.length, expectedReports.length);
+    assert.strictEqual(delivered.length, expectedReports.length + 2);
 
-    const unmatched = [...delivered];
+    const activation = delivered.find(message =>
+      message.embeds[0]?.toJSON().title === '🧑‍🏫 Coach Reports Activated');
+    assert(activation, 'report coaches command did not produce an activation embed');
+    const coachReport = delivered.find(message =>
+      message.embeds[0]?.toJSON().title?.startsWith(`🧑‍🏫 ${coachName} —`));
+    assert(coachReport, `Gmail assignment did not produce a coach report for ${coachName}`);
+    const coachEmbed = coachReport.embeds[0].toJSON();
+    assert.strictEqual(fieldValue(coachEmbed, '📍 Room'), '408A');
+    assert.strictEqual(fieldValue(coachEmbed, '⏰ Start'), '1:30 CDT');
+
+    const unmatched = delivered.filter(message => message !== activation && message !== coachReport);
     for (const expected of expectedReports) {
       const index = unmatched.findIndex(message => {
         const pairing = message.embeds[0]?.toJSON();
@@ -604,6 +647,7 @@ async function main() {
 
     console.log(
       `[E2E] PASS: ${scenarios.length} emails exercised ${expectedReports.length} reports across all matrix branches`,
+      ` plus report coaches activation and Gmail-to-Discord coach delivery for ${coachName}`,
     );
   } finally {
     if (monitor) monitor.stop();

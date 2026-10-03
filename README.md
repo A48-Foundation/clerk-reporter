@@ -414,7 +414,7 @@ npm start
 npm test
 ```
 
-The test suite includes **233 tests** across 13 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
+The test suite includes **235 tests** across 14 files, and runs automatically in CI (GitHub Actions) on every push and PR to `master`:
 
 | File | Tests | What it covers |
 |------|-------|----------------|
@@ -424,15 +424,16 @@ The test suite includes **233 tests** across 13 files, and runs automatically in
 | `channel-mapper.test.js` | 19 | Team suffix/candidate extraction, channel lookup, auto-mapping |
 | `llm-service.test.js` | 17 | Frequency analysis, inline doc links, paradigm truncation, and summary fallback |
 | `report-builder.test.js` | 13 | Embed construction, doc link fields, truncation, embed cap |
-| `bot-routing.test.js` | 9 | `_resolveChannelId` tolerant channel resolution (exact / normalized / suffix) |
+| `bot-routing.test.js` | 14 | Command dispatch, automatic caching, and tolerant channel resolution |
 | `pairing-flow.test.js` | 10 | **End-to-end**: parse → route → send, partial deterministic routing, subject identity, retriable failures, monitor restore |
+| `report-commands-e2e.test.js` | 2 | **Command E2E**: pairing setup/confirmation/delivery and coach activation/assignment delivery |
 | `tournament-cache.test.js` | 8 | Name normalization, opponent/paradigm priming, miss vs cached-empty semantics |
 | `email-monitor.test.js` | 5 | MIME body selection, awaited delivery-before-seen, isolated E2E search, and E2E-message rejection |
 | `paradigm-service.test.js` | 2 | Inline-pronoun normalization before Tabroom paradigm search |
 
 #### Live email-to-Discord smoke test
 
-Every push to `master` also runs `npm run test:live` after the ordinary tests pass. It sends 10 real emails through Gmail, retrieves only those messages through IMAP, runs the production pairing pipeline, posts 8 expected reports to Discord channel `1492506305842249728`, then fetches the messages back and validates the complete embeds.
+Every push to `master` also runs `npm run test:live` after the ordinary tests pass. It sends 11 real emails through Gmail, retrieves only those messages through IMAP, runs the production pairing pipeline, posts 8 pairing reports plus coach activation and assignment output to Discord channel `1492506305842249728`, then fetches the messages back and validates the complete embeds.
 
 The matrix covers:
 
@@ -446,6 +447,7 @@ The matrix covers:
 - Duplicate suppression and failed-route retry behavior
 - Malformed email rejection without consuming the message
 - A live external contract using `Coppell PK` (2026 OpenCaselist) and `Tom Mickelson` (Tabroom paradigm + Notion comments)
+- `report coaches` against a real Tabroom judge list, followed by matching Gmail-to-Discord coach delivery
 
 Deterministic fixtures exercise every application branch. The external contract uses non-snapshot assertions: it requires valid current OpenCaselist/Tabroom links and non-empty Notion comments without pinning changing report text.
 

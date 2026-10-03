@@ -2033,46 +2033,11 @@ class ClerkKentBot {
     try {
       await message.channel.sendTyping();
 
-      // Force fresh login then fetch judges page
-      const cheerio = require('cheerio');
-      this.paradigmService.loggedIn = false;
-      const html = await this.paradigmService.fetchPage(url);
-      console.log(`[handleReportCoaches] Fetched page, length=${html.length}, has #judgelist=${html.includes('judgelist')}`);
-      const $ = cheerio.load(html);
-      const allJudges = [];
-
-      // Debug: log table structure
-      const tableEl = $('#judgelist');
-      console.log(`[handleReportCoaches] #judgelist found: ${tableEl.length}`);
-      console.log(`[handleReportCoaches] #judgelist children: ${tableEl.children().map((i,el) => el.tagName).get().join(', ')}`);
-      const allRows = $('#judgelist tr');
-      console.log(`[handleReportCoaches] Total tr count: ${allRows.length}`);
-      if (allRows.length > 0) {
-        const firstRow = allRows.first();
-        const firstCells = firstRow.find('td, th');
-        console.log(`[handleReportCoaches] First row cells: ${firstCells.length}, tags: ${firstCells.map((i,el) => el.tagName).get().join(',')}`);
-        console.log(`[handleReportCoaches] First row HTML (200ch): ${firstRow.html().substring(0, 200)}`);
-      }
-
-      // Parse all rows with td cells
-      // Authenticated view has columns: Paradigm(0), First(1), Last(2), Institution(3), Location(4), Rounds(5), Record(6)
-      $('#judgelist tr').each((_, row) => {
-        const cells = $(row).find('td');
-        if (cells.length < 4) return;
-
-        const firstName = $(cells[1]).text().trim();
-        const lastName = $(cells[2]).text().trim();
-        const institution = $(cells[3]).attr('data-text') || $(cells[3]).text().trim();
-
-        if (firstName && lastName) {
-          allJudges.push({ firstName, lastName, institution });
-        }
-      });
-
+      const allJudges = await this._scrapeJudgesList(url);
       console.log(`[handleReportCoaches] Found ${allJudges.length} total judges on page`);
 
       if (allJudges.length === 0) {
-        await message.reply(`⚠️ No judges found on that page. (Page length: ${html.length}, has judgelist table: ${html.includes('judgelist')})`);
+        await message.reply('⚠️ No judges found on that page.');
         return;
       }
 
